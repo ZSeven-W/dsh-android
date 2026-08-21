@@ -376,11 +376,33 @@ export async function dumpUiTreeXml(
   const timeoutMs = options.timeoutMs ?? DUMP_TIMEOUT_MS
   const execOptions = { timeoutMs, maxBuffer: DUMP_MAX_BUFFER }
   let primaryFailure: string | undefined
-  try {
-    const buffer = await toolchain.execOut(serial, ['uiautomator', 'dump', '/dev/tty'], execOptions)
-    return extractHierarchyXml(buffer.toString('utf8'))
-  } catch (error) {
-    primaryFailure = error instanceof Error ? error.message : String(error)
+  // "could not get idle state" earns exactly one retry after a short pause:
+  // a transient animation (screen-on ripple, app launch) settles in well
+  // under a second, while a CONTINUOUSLY animating foreground (a web page
+  // with a spinner is the classic case) will fail again — and then the
+  // error below routes the caller to OCR instead of a retry loop.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const buffer = await toolchain.execOut(serial, ['uiautomator', 'dump', '/dev/tty'], execOptions)
+      return extractHierarchyXml(buffer.toString('utf8'))
+    } catch (error) {
+      primaryFailure = error instanceof Error ? error.message : String(error)
+      if (attempt === 0 && /could not get idle state/i.test(primaryFailure)) {
+        await new Promise(resolve => setTimeout(resolve, 800))
+        continue
+      }
+      break
+    }
+  }
+  if (primaryFailure !== undefined && /could not get idle state/i.test(primaryFailure)) {
+    // The /sdcard fallback runs the SAME dump against the same never-idle
+    // foreground; paying its ~10 s only to fail identically helps nobody.
+    throw new Error(
+      `uiautomator could not dump the window hierarchy of ${serial} (${primaryFailure}). `
+      + 'The foreground app is continuously animating (web pages in a browser are the classic case), '
+      + 'so uiautomator can never reach its idle state — do not retry this tool; read the screen with '
+      + 'android_find_text and tap with android_tap_text instead (OCR reads pixels and needs no idle).',
+    )
   }
   const remotePath = '/sdcard/window_dump.xml'
   try {
@@ -393,12 +415,19 @@ export async function dumpUiTreeXml(
   } catch (error) {
     await toolchain.shell(serial, ['rm', '-f', remotePath], execOptions).catch(() => {})
     const fallbackFailure = error instanceof Error ? error.message : String(error)
+    const idleStarved = /could not get idle state/i.test(`${primaryFailure} ${fallbackFailure}`)
     throw new Error(
       `uiautomator could not dump the window hierarchy of ${serial} `
       + `(exec-out /dev/tty: ${primaryFailure}; ${remotePath} fallback: ${fallbackFailure}). `
-      + 'uiautomator needs the screen ON and an idle window — wake the device (android_interact with '
-      + 'button "wake"), wait for animations to settle, and retry; if it keeps failing the screen is '
-      + 'likely secure (FLAG_SECURE) and only android_find_text can read it.',
+      + (idleStarved
+        // Already retried once above: a foreground that STILL never idles is
+        // continuously animating, and no number of dump retries will land.
+        ? 'The foreground app is continuously animating (web pages in a browser are the classic case), '
+          + 'so uiautomator can never reach its idle state — do not retry this tool; read the screen with '
+          + 'android_find_text and tap with android_tap_text instead (OCR reads pixels and needs no idle).'
+        : 'uiautomator needs the screen ON and an idle window — wake the device (android_interact with '
+          + 'button "wake"), wait for animations to settle, and retry; if it keeps failing the screen is '
+          + 'likely secure (FLAG_SECURE) and only android_find_text can read it.'),
     )
   }
 }
