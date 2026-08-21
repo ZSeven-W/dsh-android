@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; 現在のプラグインリリース: <code>0.1.0-rc.1</code> &middot; DSH <code>0.1.1-rc.1</code> で動作確認済み</sub>
+  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; 現在のプラグインリリース: <code>0.1.0-rc.2</code> &middot; DSH <code>0.1.1-rc.1</code> で動作確認済み</sub>
 </p>
 
 <p align="center">
@@ -37,6 +37,7 @@ DSH Android は、会話の中でエージェントに本物の Android デバ�
 | 🧩 **単一の adb コードパス** | adb にとってエミュレータと実機は同じものであり、このプラグインにとっても同じです。`simctl`/WebDriverAgent の二重スタックも、実機を使う前のビルドと信頼の儀式もありません。 |
 | 🛠️ **20 個のエージェントツール** | デバイス一覧、起動/シャットダウン、スクリーンショット、操作、Gradle ビルド＆実行、アプリの一覧/起動、`uiautomator` UI ツリー + 要素指定タップ、リスト/フィードの行操作、Vision OCR の検索/タップ/待機、logcat、プロセス、ANR/クラッシュのバックトレース、meminfo、アプリ情報。 |
 | 👆 **3 ボタンナビゲーションパネル** | ライブ映像の上でタップとドラッグ。ツールバーには **◁ 戻る · ○ ホーム · □ 履歴**、さらに回転、スクリーンショット、更新。デバイスメニューから通知シェード、クイック設定、ロック、ウェイク、アシスタントを実行できます。 |
+| 🖼️ **ネイティブなマルチモーダル** | 画像入力に対応したモデルでは、キャプチャ系のツール（screenshot、interact、tap_element、tap_text、tap_row）がスクリーンショットそのものを image block として返します——モデルが画面を直接「見る」わけです。OCR はピクセル精度のテキストタップとテキスト専用の経路のために残ります。テキストのみのモデルには、これまでどおりプレーンな JSON サマリーが返ります。 |
 | 🔐 **署名付きのループバック専用ルート** | すべてのルートは、ケーパビリティを確認する**前に**ループバックのピア、ループバックの `Host`（DNS リバインディングは拒否）、Fetch-Metadata/Origin チェックを要求します。HMAC-SHA256 ケーパビリティは 10 分以内に失効します。 |
 | 🔍 **セマンティック + ビジュアルの二系統自動化** | `android_ui_tree` が `uiautomator` の階層をダンプし、`android_tap_element` が `resource-id`、テキスト、content-description でタップします。ツリーが空、あるいはテキストが画像に焼き込まれている場合は、座標を推測する代わりに `android_find_text` / `android_tap_text` が画面を OCR します。 |
 

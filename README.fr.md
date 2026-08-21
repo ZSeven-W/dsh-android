@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <sub>npm : <code>@zseven-w/dsh-android</code> &middot; Version actuelle du plugin : <code>0.1.0-rc.1</code> &middot; Testé avec DSH <code>0.1.1-rc.1</code></sub>
+  <sub>npm : <code>@zseven-w/dsh-android</code> &middot; Version actuelle du plugin : <code>0.1.0-rc.2</code> &middot; Testé avec DSH <code>0.1.1-rc.1</code></sub>
 </p>
 
 <p align="center">
@@ -37,6 +37,7 @@ Il n'existe qu'un seul chemin de code. `adb devices -l` rapporte un **serial**, 
 | 🧩 **Un seul chemin de code adb** | Pour adb comme pour ce plugin, émulateurs et téléphones sont la même chose. Pas de double pile `simctl`/WebDriverAgent, pas de cérémonie de compilation et de confiance avant qu'un appareil physique ne fonctionne. |
 | 🛠️ **20 outils d'agent** | Appareils, démarrage/extinction, capture d'écran, interaction, compilation &amp; exécution Gradle, liste/lancement d'applications, arbre d'interface `uiautomator` + appui par élément, actions sur les lignes de listes/flux, recherche/appui/attente par OCR Vision, logcat, processus, backtrace ANR/plantage, meminfo, informations sur une application. |
 | 👆 **Panneau de navigation à trois boutons** | Touchez et faites glisser sur la vidéo en direct ; une barre d'outils avec **◁ Retour · ○ Accueil · □ Récents**, plus rotation, capture d'écran et rafraîchissement ; un menu d'appareil pour le volet de notifications, les réglages rapides, le verrouillage, le réveil et l'assistant. |
+| 🖼️ **Multimodal natif** | Sur un modèle capable de traiter les images, chaque outil de capture (screenshot, interact, tap_element, tap_text, tap_row) renvoie la capture d'écran ELLE-MÊME sous forme d'image block — le modèle voit l'écran directement. L'OCR reste pour les appuis sur du texte au pixel près et pour les routes purement textuelles ; les modèles texte seul conservent le résumé JSON brut. |
 | 🔐 **Routes signées, en boucle locale uniquement** | Chaque route exige un pair en boucle locale, un `Host` en boucle locale (rebinding DNS rejeté) et des vérifications Fetch-Metadata/Origin — **avant** que la moindre capacité ne soit consultée. Les capacités HMAC-SHA256 expirent sous 10 minutes. |
 | 🔍 **Automatisation sémantique + visuelle** | `android_ui_tree` exporte la hiérarchie `uiautomator` et `android_tap_element` appuie par `resource-id`, texte ou content-description ; quand l'arbre est vide ou que le texte est incrusté dans une image, `android_find_text` / `android_tap_text` passent l'écran à l'OCR au lieu de deviner des coordonnées. |
 

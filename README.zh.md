@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; 当前插件版本: <code>0.1.0-rc.1</code> &middot; 已在 DSH <code>0.1.1-rc.1</code> 上验证</sub>
+  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; 当前插件版本: <code>0.1.0-rc.2</code> &middot; 已在 DSH <code>0.1.1-rc.1</code> 上验证</sub>
 </p>
 
 <p align="center">
@@ -37,6 +37,7 @@ DSH Android 把一台真实的 Android 设备交给 agent，同时把画面交�
 | 🧩 **单一 adb 代码路径** | 对 adb 而言模拟器与手机是同一种东西，对本插件同样如此。没有 `simctl`/WebDriverAgent 双栈，真机也不需要先构建签名再信任。 |
 | 🛠️ **20 个 agent 工具** | 设备枚举、开流/关机、截图、交互、Gradle 构建运行、应用列举与启动、`uiautomator` 控件树 + 按元素点击、列表行操作、Vision OCR 查找/点击/等待、logcat、进程、ANR/崩溃栈、meminfo、应用信息。 |
 | 👆 **三键导航面板** | 在直播画面上点击与拖拽；工具栏含 **◁ 返回 · ○ 主页 · □ 多任务**，外加旋转、截图、刷新；设备菜单提供通知栏、快捷设置、锁屏、唤醒、语音助手五个动作。 |
+| 🖼️ **原生多模态** | 在支持图像输入的模型上，所有截图类工具（screenshot、interact、tap_element、tap_text、tap_row）会把截图本身作为 image block 一并返回——模型直接"看到"屏幕。OCR 保留用于像素级精确的文字点按与纯文本模型；纯文本路由维持原有 JSON 摘要不变。 |
 | 🔐 **签名的 loopback 专属路由** | 每条路由在读取任何 capability **之前**先要求：loopback 对端、loopback `Host`（拒绝 DNS 重绑定）、Fetch-Metadata/Origin 校验。HMAC-SHA256 capability 10 分钟内过期。 |
 | 🔍 **语义 + 视觉双路自动化** | `android_ui_tree` 导出 `uiautomator` 层级，`android_tap_element` 按 `resource-id`、文本或 content-description 点击；当控件树为空或文字被烧进图片时，`android_find_text` / `android_tap_text` 直接 OCR 屏幕，而不是猜坐标。 |
 

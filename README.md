@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; Current plugin release: <code>0.1.0-rc.1</code> &middot; Tested with DSH <code>0.1.1-rc.1</code></sub>
+  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; Current plugin release: <code>0.1.0-rc.2</code> &middot; Tested with DSH <code>0.1.1-rc.1</code></sub>
 </p>
 
 <p align="center">
@@ -37,6 +37,7 @@ There is exactly one code path. `adb devices -l` reports a **serial**, and that 
 | 🧩 **One adb code path** | Emulators and phones are the same thing to adb and to this plugin. No `simctl`/WebDriverAgent dual stack, no build-and-trust dance before a physical device works. |
 | 🛠️ **20 agent tools** | Devices, boot/shutdown, screenshot, interact, Gradle build &amp; run, app listing/launching, `uiautomator` UI tree + tap-by-element, list/feed row actions, Vision OCR find/tap/wait, logcat, processes, ANR/crash backtrace, meminfo, app info. |
 | 👆 **Three-button navigation panel** | Tap and drag on the live video; a toolbar with **◁ Back · ○ Home · □ Recents** plus rotate, screenshot, and refresh; a device menu for the notification shade, quick settings, lock, wake, and the assistant. |
+| 🖼️ **Native multimodal** | On an image-capable model every capture tool (screenshot, interact, tap_element, tap_text, tap_row) returns the screenshot ITSELF as an image block — the model sees the screen directly. OCR stays for pixel-precise text taps and text-only routes; text-only models keep the plain JSON summary. |
 | 🔐 **Signed loopback-only routes** | Every route requires a loopback peer, a loopback `Host` (DNS rebinding rejected), and Fetch-Metadata/Origin checks — before any capability is consulted. HMAC-SHA256 capabilities expire within 10 minutes. |
 | 🔍 **Semantic + visual automation** | `android_ui_tree` dumps the `uiautomator` hierarchy and `android_tap_element` taps by `resource-id`, text, or content-description; when the tree is empty or the text is baked into an image, `android_find_text` / `android_tap_text` OCR the screen instead of guessing coordinates. |
 

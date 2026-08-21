@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; 目前外掛程式版本：<code>0.1.0-rc.1</code> &middot; 已在 DSH <code>0.1.1-rc.1</code> 驗證</sub>
+  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; 目前外掛程式版本：<code>0.1.0-rc.2</code> &middot; 已在 DSH <code>0.1.1-rc.1</code> 驗證</sub>
 </p>
 
 <p align="center">
@@ -37,6 +37,7 @@ DSH Android 把一台真實的 Android 裝置交給智慧代理，同時把畫�
 | 🧩 **單一 adb 程式碼路徑** | 對 adb 而言模擬器與手機是同一種東西，對本外掛程式亦然。沒有 `simctl`/WebDriverAgent 雙堆疊，實體裝置也不必先建置、簽章再信任。 |
 | 🛠️ **20 個智慧代理工具** | 裝置列舉、開機/關機、螢幕擷取、互動、Gradle 建置與執行、應用程式列舉與啟動、`uiautomator` UI 樹 + 依元素點按、清單/資訊流列級操作、Vision OCR 尋找/點按/等待、logcat、處理程序、ANR/當機回溯、meminfo、應用程式資訊。 |
 | 👆 **三鍵導覽面板** | 在即時影片上點按與拖曳；工具列含 **◁ 返回 · ○ 主畫面 · □ 最近應用**，外加旋轉、螢幕擷取與重新整理；裝置選單提供通知欄、快速設定、鎖定、喚醒與語音助理。 |
+| 🖼️ **原生多模態** | 在支援影像輸入的模型上，所有擷取類工具（screenshot、interact、tap_element、tap_text、tap_row）會把螢幕擷取本身當作 image block 一併回傳——模型直接「看到」畫面。OCR 保留用於像素級精確的文字點按與純文字模型；純文字路由維持原有 JSON 摘要不變。 |
 | 🔐 **簽章的回送專用路由** | 每條路由在檢查任何能力憑證**之前**先要求：回送對端、回送 `Host`（拒絕 DNS 重綁定）、Fetch-Metadata/Origin 驗證。HMAC-SHA256 能力憑證 10 分鐘內過期。 |
 | 🔍 **語意 + 視覺雙路自動化** | `android_ui_tree` 匯出 `uiautomator` 階層，`android_tap_element` 依 `resource-id`、文字或 content-description 點按；當 UI 樹為空、或文字被燒進圖片時，`android_find_text` / `android_tap_text` 直接對螢幕做 OCR，而不是猜座標。 |
 

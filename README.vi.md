@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; Bản phát hành plugin hiện tại: <code>0.1.0-rc.1</code> &middot; Đã kiểm thử với DSH <code>0.1.1-rc.1</code></sub>
+  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; Bản phát hành plugin hiện tại: <code>0.1.0-rc.2</code> &middot; Đã kiểm thử với DSH <code>0.1.1-rc.1</code></sub>
 </p>
 
 <p align="center">
@@ -37,6 +37,7 @@ Chỉ tồn tại đúng một đường mã. `adb devices -l` báo cáo một *
 | 🧩 **Một đường mã adb duy nhất** | Với adb và với plugin này, trình giả lập và điện thoại là cùng một thứ. Không có ngăn xếp kép `simctl`/WebDriverAgent, không có màn build-và-tin-cậy trước khi một thiết bị vật lý chịu chạy. |
 | 🛠️ **20 công cụ agent** | Thiết bị, khởi động/tắt máy, ảnh chụp màn hình, tương tác, build &amp; chạy Gradle, liệt kê/khởi chạy ứng dụng, cây UI `uiautomator` + chạm theo phần tử, thao tác hàng danh sách/bảng tin, tìm/chạm/chờ văn bản bằng Vision OCR, logcat, tiến trình, backtrace ANR/sự cố, meminfo, thông tin ứng dụng. |
 | 👆 **Bảng điều hướng ba nút** | Chạm và kéo trên video trực tiếp; một thanh công cụ với **◁ Back · ○ Home · □ Recents** cùng xoay, chụp màn hình và làm mới; một trình đơn thiết bị cho bảng thông báo, cài đặt nhanh, khóa, đánh thức và trợ lý. |
+| 🖼️ **Đa phương thức nguyên bản** | Trên một mô hình xử lý được hình ảnh, mọi công cụ chụp (screenshot, interact, tap_element, tap_text, tap_row) trả về CHÍNH ảnh chụp màn hình dưới dạng một image block — mô hình nhìn thấy màn hình trực tiếp. OCR vẫn được giữ cho các thao tác chạm văn bản chính xác đến từng điểm ảnh và cho các tuyến chỉ có văn bản; các mô hình chỉ xử lý văn bản vẫn nhận bản tóm tắt JSON thuần như trước. |
 | 🔐 **Tuyến có chữ ký, chỉ qua loopback** | Mọi tuyến đều đòi hỏi một đầu loopback, một `Host` loopback (tấn công DNS rebinding bị từ chối) và các kiểm tra Fetch-Metadata/Origin — trước khi bất kỳ năng lực nào được xét đến. Năng lực HMAC-SHA256 hết hạn trong vòng 10 phút. |
 | 🔍 **Tự động hóa theo ngữ nghĩa + thị giác** | `android_ui_tree` kết xuất cây phân cấp `uiautomator` và `android_tap_element` chạm theo `resource-id`, văn bản hoặc content-description; khi cây rỗng hoặc văn bản đã bị nung vào ảnh, `android_find_text` / `android_tap_text` sẽ OCR màn hình thay vì đoán tọa độ. |
 

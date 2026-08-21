@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; 현재 플러그인 릴리스: <code>0.1.0-rc.1</code> &middot; DSH <code>0.1.1-rc.1</code>에서 검증됨</sub>
+  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; 현재 플러그인 릴리스: <code>0.1.0-rc.2</code> &middot; DSH <code>0.1.1-rc.1</code>에서 검증됨</sub>
 </p>
 
 <p align="center">
@@ -37,6 +37,7 @@ DSH Android는 대화 안에서 에이전트에게 진짜 Android 기기를 건�
 | 🧩 **단일 adb 코드 경로** | adb에게도, 이 플러그인에게도 에뮬레이터와 휴대폰은 같은 것입니다. `simctl`/WebDriverAgent 이중 스택도, 실기기를 쓰기 전 빌드하고 신뢰시키는 절차도 없습니다. |
 | 🛠️ **20개 에이전트 도구** | 기기 목록, 부팅/종료, 스크린샷, 상호작용, Gradle 빌드 &amp; 실행, 앱 목록/실행, `uiautomator` UI 트리 + 요소 기반 탭, 목록/피드 행 동작, Vision OCR 찾기/탭/대기, logcat, 프로세스, ANR/크래시 백트레이스, meminfo, 앱 정보. |
 | 👆 **3버튼 내비게이션 패널** | 실시간 영상 위에서 탭과 드래그. 툴바에는 **◁ 뒤로 · ○ 홈 · □ 최근 앱**과 회전·스크린샷·새로고침이 있고, 기기 메뉴에서 알림 셰이드·빠른 설정·잠금·깨우기·어시스턴트를 실행합니다. |
+| 🖼️ **네이티브 멀티모달** | 이미지를 처리할 수 있는 모델에서는 모든 캡처 도구(screenshot, interact, tap_element, tap_text, tap_row)가 스크린샷 자체를 image block으로 반환합니다 — 모델이 화면을 직접 봅니다. OCR은 픽셀 단위로 정확한 텍스트 탭과 텍스트 전용 경로를 위해 남아 있고, 텍스트 전용 모델은 기존의 평범한 JSON 요약을 그대로 받습니다. |
 | 🔐 **서명된 루프백 전용 라우트** | 모든 라우트는 어떤 capability를 확인하기 **전에** 루프백 피어, 루프백 `Host`(DNS 리바인딩 거부), Fetch-Metadata/Origin 검사를 요구합니다. HMAC-SHA256 capability는 10분 안에 만료됩니다. |
 | 🔍 **의미 기반 + 시각 기반 자동화** | `android_ui_tree`가 `uiautomator` 계층을 덤프하고 `android_tap_element`가 `resource-id`, 텍스트, content-description으로 탭합니다. 트리가 비어 있거나 텍스트가 이미지에 구워져 있으면 좌표를 추측하는 대신 `android_find_text` / `android_tap_text`가 화면을 OCR합니다. |
 

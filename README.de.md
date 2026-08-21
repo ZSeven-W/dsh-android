@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; Aktuelles Plugin-Release: <code>0.1.0-rc.1</code> &middot; Getestet mit DSH <code>0.1.1-rc.1</code></sub>
+  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; Aktuelles Plugin-Release: <code>0.1.0-rc.2</code> &middot; Getestet mit DSH <code>0.1.1-rc.1</code></sub>
 </p>
 
 <p align="center">
@@ -37,6 +37,7 @@ Es gibt genau einen Codepfad. `adb devices -l` meldet ein **Serial**, und dieses
 | 🧩 **Ein adb-Codepfad** | Für adb wie für dieses Plugin sind Emulatoren und Telefone dasselbe. Kein `simctl`/WebDriverAgent-Doppelstack, kein Bauen-und-Vertrauen-Tanz, bevor ein physisches Gerät funktioniert. |
 | 🛠️ **20 Agenten-Tools** | Geräte, Start/Herunterfahren, Screenshot, Interaktion, Gradle-Build &amp; -Run, App-Auflistung/-Start, `uiautomator`-UI-Tree + Tippen per Element, Zeilenaktionen für Listen/Feeds, Vision-OCR Finden/Tippen/Warten, logcat, Prozesse, ANR-/Crash-Backtrace, meminfo, App-Infos. |
 | 👆 **Drei-Tasten-Navigationspanel** | Tippen und Ziehen auf dem Live-Video; eine Symbolleiste mit **◁ Zurück · ○ Startseite · □ Übersicht** plus Drehen, Screenshot und Aktualisieren; ein Gerätemenü für Benachrichtigungsleiste, Schnelleinstellungen, Sperren, Aufwecken und Assistent. |
+| 🖼️ **Nativ multimodal** | Bei einem bildfähigen Modell liefert jedes Aufnahme-Tool (screenshot, interact, tap_element, tap_text, tap_row) den Screenshot SELBST als image block zurück — das Modell sieht den Bildschirm direkt. OCR bleibt für pixelgenaue Text-Taps und reine Text-Routen; Modelle ohne Bildunterstützung erhalten weiterhin die schlichte JSON-Zusammenfassung. |
 | 🔐 **Signierte Routen, nur über Loopback** | Jede Route verlangt einen Loopback-Peer, einen Loopback-`Host` (DNS-Rebinding wird abgelehnt) und Fetch-Metadata-/Origin-Prüfungen — **bevor** irgendeine Capability geprüft wird. HMAC-SHA256-Capabilities laufen innerhalb von 10 Minuten ab. |
 | 🔍 **Semantische + visuelle Automatisierung** | `android_ui_tree` gibt die `uiautomator`-Hierarchie aus und `android_tap_element` tippt per `resource-id`, Text oder Content-Description; ist der Baum leer oder der Text ins Bild eingebrannt, führen `android_find_text` / `android_tap_text` stattdessen OCR auf dem Bildschirm aus, statt Koordinaten zu raten. |
 

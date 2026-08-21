@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; Versão atual do plugin: <code>0.1.0-rc.1</code> &middot; Testado com o DSH <code>0.1.1-rc.1</code></sub>
+  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; Versão atual do plugin: <code>0.1.0-rc.2</code> &middot; Testado com o DSH <code>0.1.1-rc.1</code></sub>
 </p>
 
 <p align="center">
@@ -37,6 +37,7 @@ Existe exatamente um caminho de código. O `adb devices -l` reporta um **serial*
 | 🧩 **Um só caminho de código adb** | Para o adb, e para este plugin, emuladores e celulares são a mesma coisa. Sem pilha dupla `simctl`/WebDriverAgent, sem a dança de compilar e confiar antes que um dispositivo físico funcione. |
 | 🛠️ **20 ferramentas de agente** | Dispositivos, inicialização/desligamento, captura de tela, interação, build &amp; execução com Gradle, listagem/lançamento de apps, árvore de UI do `uiautomator` + toque por elemento, ações em linhas de listas/feeds, buscar/tocar/aguardar com OCR do Vision, logcat, processos, backtrace de ANR/crash, meminfo, informações do app. |
 | 👆 **Painel de navegação de três botões** | Toque e arraste no vídeo ao vivo; uma barra com **◁ Voltar · ○ Início · □ Recentes**, além de girar, capturar e atualizar; um menu de dispositivo para a área de notificações, as configurações rápidas, bloquear, acordar e o assistente. |
+| 🖼️ **Multimodal nativo** | Em um modelo capaz de lidar com imagens, toda ferramenta de captura (screenshot, interact, tap_element, tap_text, tap_row) devolve a própria captura de tela como um image block — o modelo vê a tela diretamente. O OCR permanece para toques em texto com precisão de pixel e para rotas somente texto; modelos somente texto continuam recebendo o resumo JSON simples. |
 | 🔐 **Rotas assinadas, somente em loopback** | Toda rota exige um par em loopback, um `Host` de loopback (DNS rebinding é rejeitado) e verificações de Fetch-Metadata/Origin — **antes** de qualquer capability ser consultada. As capabilities HMAC-SHA256 expiram em até 10 minutos. |
 | 🔍 **Automação semântica + visual** | O `android_ui_tree` despeja a hierarquia do `uiautomator` e o `android_tap_element` toca por `resource-id`, texto ou content-description; quando a árvore está vazia ou o texto está embutido em uma imagem, `android_find_text` / `android_tap_text` fazem OCR da tela em vez de adivinhar coordenadas. |
 

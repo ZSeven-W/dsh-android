@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; Rilis plugin saat ini: <code>0.1.0-rc.1</code> &middot; Diuji dengan DSH <code>0.1.1-rc.1</code></sub>
+  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; Rilis plugin saat ini: <code>0.1.0-rc.2</code> &middot; Diuji dengan DSH <code>0.1.1-rc.1</code></sub>
 </p>
 
 <p align="center">
@@ -37,6 +37,7 @@ Hanya ada satu jalur kode. `adb devices -l` melaporkan sebuah **serial**, dan se
 | 🧩 **Satu jalur kode adb** | Emulator dan ponsel adalah hal yang sama bagi adb maupun bagi plugin ini. Tanpa tumpukan ganda `simctl`/WebDriverAgent, tanpa ritual build-dan-percayai sebelum perangkat fisik bisa dipakai. |
 | 🛠️ **20 alat agen** | Perangkat, nyalakan/matikan, tangkapan layar, interaksi, build &amp; jalankan Gradle, pencantuman/peluncuran aplikasi, pohon UI `uiautomator` + ketuk per elemen, aksi baris daftar/umpan, temukan/ketuk/tunggu teks dengan Vision OCR, logcat, proses, backtrace ANR/crash, meminfo, info aplikasi. |
 | 👆 **Panel navigasi tiga tombol** | Ketuk dan seret pada video langsung; bilah alat dengan **◁ Back · ○ Home · □ Recents** plus putar, tangkapan layar, dan segarkan; menu perangkat untuk panel notifikasi, pengaturan cepat, kunci, bangunkan, dan asisten. |
+| 🖼️ **Multimodal bawaan** | Pada model yang mampu memproses gambar, setiap alat penangkap (screenshot, interact, tap_element, tap_text, tap_row) mengembalikan tangkapan layar ITU SENDIRI sebagai image block — model melihat layar secara langsung. OCR tetap ada untuk ketukan teks berpresisi piksel dan rute khusus teks; model khusus teks tetap menerima ringkasan JSON biasa. |
 | 🔐 **Rute bertanda tangan khusus loopback** | Setiap rute mewajibkan peer loopback, `Host` loopback (DNS rebinding ditolak), dan pemeriksaan Fetch-Metadata/Origin — sebelum kapabilitas apa pun diperiksa. Kapabilitas HMAC-SHA256 kedaluwarsa dalam 10 menit. |
 | 🔍 **Otomasi semantik + visual** | `android_ui_tree` membuang hierarki `uiautomator` dan `android_tap_element` mengetuk berdasarkan `resource-id`, teks, atau content-description; saat pohon kosong atau teksnya tercetak di dalam gambar, `android_find_text` / `android_tap_text` meng-OCR layar alih-alih menebak koordinat. |
 

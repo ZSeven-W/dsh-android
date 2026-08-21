@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; Güncel eklenti sürümü: <code>0.1.0-rc.1</code> &middot; DSH <code>0.1.1-rc.1</code> ile test edildi</sub>
+  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; Güncel eklenti sürümü: <code>0.1.0-rc.2</code> &middot; DSH <code>0.1.1-rc.1</code> ile test edildi</sub>
 </p>
 
 <p align="center">
@@ -37,6 +37,7 @@ Tek bir kod yolu vardır. `adb devices -l` bir **seri numarası** bildirir ve bi
 | 🧩 **Tek bir adb kod yolu** | Emülatörler ve telefonlar hem adb için hem de bu eklenti için aynı şeydir. `simctl`/WebDriverAgent ikili yığını yok, fiziksel bir cihaz çalışmadan önce derleme ve güven dansı yok. |
 | 🛠️ **20 ajan aracı** | Cihazlar, başlatma/kapatma, ekran görüntüsü, etkileşim, Gradle derleme &amp; çalıştırma, uygulama listeleme/başlatma, `uiautomator` UI ağacı + öğeye dokunma, liste/akış satırı eylemleri, Vision OCR bul/dokun/bekle, logcat, süreçler, ANR/çökme backtrace'i, meminfo, uygulama bilgisi. |
 | 👆 **Üç düğmeli gezinme paneli** | Canlı videoda dokunun ve sürükleyin; **◁ Back · ○ Home · □ Recents** ile birlikte döndürme, ekran görüntüsü ve yenileme içeren bir araç çubuğu; bildirim gölgesi, hızlı ayarlar, kilitleme, uyandırma ve asistan için bir cihaz menüsü. |
+| 🖼️ **Yerel multimodal** | Görsel işleyebilen bir modelde her yakalama aracı (screenshot, interact, tap_element, tap_text, tap_row) ekran görüntüsünün KENDİSİNİ bir image block olarak döndürür — model ekranı doğrudan görür. OCR, piksel hassasiyetli metin dokunuşları ve yalnızca metin işleyen rotalar için kalır; yalnızca metin modelleri sade JSON özetini almayı sürdürür. |
 | 🔐 **Yalnızca loopback imzalı rotalar** | Her rota, herhangi bir yetenek denetlenmeden önce loopback bir eş, loopback bir `Host` (DNS yeniden bağlama reddedilir) ve Fetch-Metadata/Origin denetimleri ister. HMAC-SHA256 yeteneklerinin süresi 10 dakika içinde dolar. |
 | 🔍 **Anlamsal + görsel otomasyon** | `android_ui_tree` `uiautomator` hiyerarşisini döker, `android_tap_element` ise `resource-id`, metin veya içerik açıklamasına göre dokunur; ağaç boşken veya metin bir görselin içine gömülüyken `android_find_text` / `android_tap_text` koordinat tahmin etmek yerine ekranı OCR'lar. |
 
