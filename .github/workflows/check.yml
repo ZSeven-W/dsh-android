@@ -1,0 +1,135 @@
+# Build and run the full fixture suite on every push and PR.
+#
+# Three jobs, cheapest first:
+#
+#   static     build plus the host-agnostic static smokes — the fast gate
+#   suites     typecheck and every fixture suite
+#   emulator   boots a real Android emulator; experimental, so a flaky boot
+#              cannot block a PR
+#
+# Unlike the iOS twin there is no macOS-only job for the core: adb is the only
+# toolchain the plugin talks to and it runs everywhere, so Linux is the honest
+# home for both gates. (The Vision-OCR tools DO need a macOS host; their
+# host-side compile path is not exercised here — see the README.)
+#
+# DSH_ANDROID_SMOKE_SKIP_DEVICE=1 keeps the first two jobs deterministic. A
+# green check is therefore NOT a claim that a phone works: the physical-device
+# path is verified by a human, on a device, against the README checklist.
+name: Plugin check
+
+on:
+  pull_request:
+  push:
+    branches: ['main']
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: Node 24 / build + static smokes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      - name: Static smoke — adb toolchain, frame splitter, host lifecycle
+        run: node scripts/dev-adb-smoke.mjs
+        env:
+          DSH_ANDROID_SMOKE_SKIP_DEVICE: '1'
+      - name: Static smoke — signed routes (fake host, no adb)
+        run: node scripts/dev-routes-static-smoke.mjs
+        env:
+          DSH_ANDROID_SMOKE_SKIP_DEVICE: '1'
+      - name: Static smoke — device panel (SSR only)
+        # The panel suite lands with the client; skip cleanly until it does.
+        run: |
+          if [ -f scripts/dev-panel-smoke.mjs ]; then
+            node scripts/dev-panel-smoke.mjs
+          else
+            echo "scripts/dev-panel-smoke.mjs is not present yet — skipping."
+          fi
+        env:
+          DSH_ANDROID_SMOKE_SKIP_DEVICE: '1'
+
+  suites:
+    name: Node 24 / fixture suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Fixture suites
+        run: pnpm test
+        env:
+          DSH_ANDROID_SMOKE_SKIP_DEVICE: '1'
+
+  emulator:
+    # Experimental: boots a real Android emulator through KVM on the Linux
+    # runner. Marked continue-on-error so a flaky boot cannot block a PR.
+    name: Linux / live emulator smoke (experimental)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+
+      # The emulator needs hardware acceleration; without KVM a boot takes
+      # long enough to time the job out.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Live emulator smoke (boots an AVD)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          script: node scripts/dev-emulator-smoke.mjs
