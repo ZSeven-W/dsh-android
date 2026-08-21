@@ -638,4 +638,33 @@ function makeFakeToolchain({ frameIntervalMs = 25, devices: listing = [FAKE_DEVI
   }
 }
 
+// ── issue #1: Windows has no Unix execute bit ────────────────────────────────
+// A real adb.exe (LDPlayer) was misjudged as "not an executable file" because
+// resolution required mode & 0o111. With platform stubbed to win32, a plain
+// regular file with NO exec bit must resolve through the ADB env var.
+{
+  const winDir = mkdtempSync(join(tmpdir(), 'dsh-android-win-adb-'))
+  const winAdb = join(winDir, 'adb.exe')
+  writeFileSync(winAdb, '@echo off\r\n', { mode: 0o644 })
+  const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+  try {
+    await withEnv({ ADB: winAdb }, async () => {
+      const resolved = adb.resolveAdbBinary()
+      step('issue #1: a mode-0644 adb.exe resolves on win32',
+        resolved.available === true && resolved.source === 'env' && resolved.command === winAdb,
+        JSON.stringify(resolved))
+    })
+  } finally {
+    if (realPlatform) Object.defineProperty(process, 'platform', realPlatform)
+  }
+  Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
+  try {
+    step('the Unix execute-bit check still holds off win32',
+      (await withEnv({ ADB: winAdb }, async () => adb.resolveAdbBinary())).available === false)
+  } finally {
+    if (realPlatform) Object.defineProperty(process, 'platform', realPlatform)
+  }
+}
+
 finish()

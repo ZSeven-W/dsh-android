@@ -87,7 +87,12 @@ function errorMessage(error: unknown): string {
 function isExecutableFile(path: string): boolean {
   try {
     const info = statSync(path)
-    return info.isFile() && (info.mode & 0o111) !== 0
+    if (!info.isFile()) return false
+    // Windows has no Unix execute bit — mode & 0o111 misjudged every real
+    // adb.exe as non-executable (#1, an LDPlayer setup). A regular file IS
+    // the check there; execFile owns actual launch failures either way.
+    if (process.platform === 'win32') return true
+    return (info.mode & 0o111) !== 0
   } catch {
     return false
   }
