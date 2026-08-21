@@ -64,6 +64,7 @@ import {
   screenBoundsOf,
   type UiTreeNode,
 } from './uitree.js'
+import { IMAGE_REF_SCHEMA, renderJsonWithImage } from './vision.js'
 
 /** Registered list-row tool names, in registration order. */
 export const ANDROID_ROW_TOOL_NAMES = ['android_ui_rows', 'android_tap_row'] as const
@@ -190,6 +191,7 @@ function noRowsHint(roots: readonly UiTreeNode[], omittedOffscreen: number): str
 
 /** Create the two `android_*_row(s)` tool definitions bound to one host. */
 export function createAndroidRowTools(host: AndroidToolHost, options: AndroidUiToolsOptions = {}): AndroidRowTools {
+  const vision = options.vision
   const cacheDir = options.cacheDir ?? join(tmpdir(), 'dsh-android')
   const screenshots = new ScreenshotStore(cacheDir)
 
@@ -363,10 +365,11 @@ export function createAndroidRowTools(host: AndroidToolHost, options: AndroidUiT
           width: { type: 'integer' },
           height: { type: 'integer' },
           device: { ...deviceSchema, required: true },
+          image: IMAGE_REF_SCHEMA,
           note: { type: 'string' },
         },
       },
-      render: renderJson,
+      render: renderJsonWithImage,
       presentationMeta: (_args: unknown, value: JsonValue): JsonValue => screenshotMeta(value),
     },
     timeoutMs: 180_000,
@@ -376,7 +379,7 @@ export function createAndroidRowTools(host: AndroidToolHost, options: AndroidUiT
       x?: number
       y?: number
       expect_count?: { key: string; delta: number }
-    }) {
+    }, exec) {
       if (!Number.isInteger(args.row) || args.row < 0) {
         throw new Error('android_tap_row: row must be a 0-based row index from android_ui_rows (an integer >= 0)')
       }
@@ -428,7 +431,8 @@ export function createAndroidRowTools(host: AndroidToolHost, options: AndroidUiT
             }
           : verifyCountChange(plan.row, afterRow, expectation.key, expectation.delta)
       }
-      const screenshot = await captureScreenshot('android_tap_row', screenshots, host, device)
+      const screenshot = await captureScreenshot('android_tap_row', screenshots, host, device,
+        vision === undefined ? undefined : { services: vision, exec })
       return {
         action: 'tap-row',
         row: toOutputRow(plan.row),

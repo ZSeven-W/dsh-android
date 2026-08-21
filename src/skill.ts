@@ -41,6 +41,16 @@ export const ANDROID_SKILL_CONTENT = `# Driving Android with dsh-android
 
 The loop is **observe once → act with an assertion → observe again only if the assertion could not settle it**. Everything here goes through \`adb\`; there is no second backend, and an emulator and a phone take exactly the same tools with the same arguments.
 
+## Seeing the screen (image-capable models)
+
+On a model that declares image input, every capture-producing tool
+(android_screenshot, android_interact, android_tap_element, android_tap_text,
+android_tap_row) returns the screenshot ITSELF as an image alongside its JSON
+summary — look at it directly instead of OCR-transcribing the screen. The OCR
+trio (android_find_text / android_tap_text / android_wait_for) remains the
+right tool when you need PIXEL-PRECISE coordinates for a text target, and the
+only reader on text-only routes or non-macOS hosts.
+
 ## Reading the screen
 
 | Tool | Cost | Use it for |

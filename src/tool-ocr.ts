@@ -66,6 +66,7 @@ import {
   type OcrExpectationResult,
   type OcrSnapshot,
 } from './tool-uitree.js'
+import { IMAGE_REF_SCHEMA, renderJsonWithImage } from './vision.js'
 
 /** Registered Vision-OCR tool names, in registration order. */
 export const ANDROID_OCR_TOOL_NAMES = ['android_find_text', 'android_tap_text', 'android_wait_for'] as const
@@ -236,6 +237,7 @@ const ocrItemSchema = {
 
 /** Create the three Vision-OCR tool definitions bound to one host. */
 export function createAndroidOcrTools(host: AndroidToolHost, options: AndroidUiToolsOptions = {}): AndroidOcrTools {
+  const vision = options.vision
   const cacheDir = options.cacheDir ?? join(tmpdir(), 'dsh-android')
   const screenshots = new ScreenshotStore(cacheDir)
 
@@ -489,9 +491,10 @@ export function createAndroidOcrTools(host: AndroidToolHost, options: AndroidUiT
           width: { type: 'integer' },
           height: { type: 'integer' },
           device: { ...deviceSchema, required: true },
+          image: IMAGE_REF_SCHEMA,
         },
       },
-      render: renderJson,
+      render: renderJsonWithImage,
       presentationMeta: (_args: unknown, value: JsonValue): JsonValue => screenshotMeta(value),
     },
     timeoutMs: 180_000,
@@ -524,7 +527,8 @@ export function createAndroidOcrTools(host: AndroidToolHost, options: AndroidUiT
         throw new Error(`android_tap_text: the tap at (${round2(center.x)}, ${round2(center.y)}) px failed: ${errorMessage(error)}`)
       }
       await sleep(TAP_SETTLE_MS)
-      const screenshot = await captureScreenshot('android_tap_text', screenshots, host, device)
+      const screenshot = await captureScreenshot('android_tap_text', screenshots, host, device,
+        vision === undefined ? undefined : { services: vision, exec })
       const expected = expectation === undefined
         ? undefined
         : await runTapExpectation('android_tap_text', screenshots, host, device, expectation.text, expectation.mode, exec.signal)

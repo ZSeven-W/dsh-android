@@ -17,9 +17,16 @@
 
 import type { JsonValue } from '@deepseek-ai/dsh-tools'
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type { AndroidDevice, AndroidDeviceDetails } from './adb.js'
 import { ANDROID_BUTTONS, type AndroidHostController } from './android-host.js'
+import {
+  imageInputActive,
+  saveScreenshotAttachment,
+  type AndroidImageRef,
+  type AndroidVisionServices,
+  type VisionExecLike,
+} from './vision.js'
 
 /** The device summary every tool result carries. */
 export interface AndroidDeviceInfo {
@@ -32,13 +39,37 @@ export interface AndroidDeviceInfo {
   state: string
 }
 
-/** Screenshot summary — the value the tools return instead of image bytes. */
+/** Screenshot summary — the value the tools return instead of image bytes.
+ * On an image-capable route `image` carries the durable attachment ref and
+ * the render layer delivers the screenshot to the model as an image block. */
 export interface AndroidScreenshotResult {
   path: string
   bytes: number
   width?: number
   height?: number
   device: AndroidDeviceInfo
+  image?: AndroidImageRef
+}
+
+/** The services+exec pair a capture site passes to opt into image delivery. */
+export interface CaptureVisionInput {
+  services: AndroidVisionServices
+  exec: VisionExecLike
+}
+
+/**
+ * Resolve the optional image attachment for one captured PNG: only on an
+ * image-capable route with a mounted store, and NEVER an error — any failure
+ * keeps the text-only result (degrade, don't refuse).
+ */
+export async function screenshotImageRef(
+  vision: CaptureVisionInput | undefined,
+  png: Uint8Array,
+  name: string,
+): Promise<AndroidImageRef | undefined> {
+  if (vision === undefined) return undefined
+  if (!await imageInputActive(vision.services, vision.exec)) return undefined
+  return saveScreenshotAttachment(vision.services, png, name)
 }
 
 export type AndroidInteractAction = 'tap' | 'type' | 'button' | 'gesture' | 'scroll'
@@ -213,6 +244,7 @@ export async function captureScreenshot(
   tool: string,
   device: AndroidDevice,
   summary: AndroidDeviceInfo,
+  vision?: CaptureVisionInput,
 ): Promise<AndroidScreenshotResult> {
   let shot: { png: Buffer; width?: number; height?: number }
   try {
@@ -230,12 +262,14 @@ export async function captureScreenshot(
     throw new Error(`${tool}: could not write the screenshot to ${path}: ${errorMessage(error)}`)
   }
   const bytes = statSync(path).size
+  const image = await screenshotImageRef(vision, shot.png, basename(path))
   return {
     path,
     bytes,
     ...(shot.width === undefined ? {} : { width: shot.width }),
     ...(shot.height === undefined ? {} : { height: shot.height }),
     device: summary,
+    ...(image === undefined ? {} : { image }),
   }
 }
 

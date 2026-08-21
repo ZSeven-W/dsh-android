@@ -36,7 +36,7 @@ import {
 } from '@deepseek-ai/dsh-tools'
 import { closeSync, existsSync, mkdirSync, openSync, readSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type { AndroidDevice } from './adb.js'
 import {
   ensureOcrBinary,
@@ -59,6 +59,13 @@ import {
   type UiTreeNode,
   type UiTreeToolchain,
 } from './uitree.js'
+import {
+  IMAGE_REF_SCHEMA,
+  renderJsonWithImage,
+  type AndroidImageRef,
+  type AndroidVisionServices,
+} from './vision.js'
+import { screenshotImageRef, type CaptureVisionInput } from './tool-support.js'
 
 /** Registered UI tool names, in registration order. */
 export const ANDROID_UI_TOOL_NAMES = ['android_ui_tree', 'android_tap_element'] as const
@@ -102,6 +109,8 @@ export interface AndroidDeviceInfo {
 export interface AndroidUiToolsOptions {
   /** Plugin-owned cache root for screenshots (default `<tmp>/dsh-android`). */
   cacheDir?: string
+  /** Optional attachments+llm services for native image delivery. */
+  vision?: AndroidVisionServices
 }
 
 /** The two `android_ui_*` tool definitions bound to one host controller. */
@@ -272,6 +281,7 @@ export interface ScreenshotCapture {
   width?: number
   height?: number
   device: AndroidDeviceInfo
+  image?: AndroidImageRef
 }
 
 /** Capture one screenshot into the store (same summary as android_screenshot). */
@@ -280,6 +290,7 @@ export async function captureScreenshot(
   store: ScreenshotStore,
   host: AndroidToolHost,
   device: AndroidDevice,
+  vision?: CaptureVisionInput,
 ): Promise<ScreenshotCapture> {
   let shot: { png: Buffer; width?: number; height?: number }
   try {
@@ -296,11 +307,13 @@ export async function captureScreenshot(
   const bytes = statSync(path).size
   const size = readPngSize(path)
     ?? (shot.width !== undefined && shot.height !== undefined ? { width: shot.width, height: shot.height } : undefined)
+  const image = await screenshotImageRef(vision, shot.png, basename(path))
   return {
     path,
     bytes,
     ...(size === undefined ? {} : { width: size.width, height: size.height }),
     device: deviceSummaryOf(device),
+    ...(image === undefined ? {} : { image }),
   }
 }
 
@@ -568,6 +581,7 @@ const treeNodeSchema = {
 
 /** Create the two `android_ui_*` tool definitions bound to one host. */
 export function createAndroidUiTools(host: AndroidToolHost, options: AndroidUiToolsOptions = {}): AndroidUiTools {
+  const vision = options.vision
   const cacheDir = options.cacheDir ?? join(tmpdir(), 'dsh-android')
   const screenshots = new ScreenshotStore(cacheDir)
 
@@ -714,9 +728,10 @@ export function createAndroidUiTools(host: AndroidToolHost, options: AndroidUiTo
           width: { type: 'integer' },
           height: { type: 'integer' },
           device: { ...deviceSchema, required: true },
+          image: IMAGE_REF_SCHEMA,
         },
       },
-      render: renderJson,
+      render: renderJsonWithImage,
       presentationMeta: (_args: unknown, value: JsonValue): JsonValue => screenshotMeta(value),
     },
     timeoutMs: 180_000,
@@ -757,7 +772,8 @@ export function createAndroidUiTools(host: AndroidToolHost, options: AndroidUiTo
         throw new Error(`android_tap_element: the tap at (${center.x}, ${center.y}) px failed: ${errorMessage(error)}`)
       }
       await sleep(TAP_SETTLE_MS)
-      const screenshot = await captureScreenshot('android_tap_element', screenshots, host, device)
+      const screenshot = await captureScreenshot('android_tap_element', screenshots, host, device,
+        vision === undefined ? undefined : { services: vision, exec })
       const expected = expectation === undefined
         ? undefined
         : await runTapExpectation('android_tap_element', screenshots, host, device, expectation.text, expectation.mode, exec.signal)

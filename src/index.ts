@@ -209,10 +209,24 @@ export {
   ANDROID_SKILL_WHEN_TO_USE,
   registerAndroidSkill,
 } from './skill.js'
+import { resolveVisionServices } from './vision.js'
 
 // ── plugin entry ─────────────────────────────────────────────────────────────
 
 /** Stable plugin name (the loader entry id in cordis.patch.yml). */
+export {
+  IMAGE_REF_SCHEMA,
+  imageInputActive,
+  renderJsonWithImage,
+  resolveVisionServices,
+  saveScreenshotAttachment,
+  type AndroidImageRef,
+  type AndroidVisionServices,
+  type AttachmentStoreLike,
+  type LlmServiceLike,
+  type VisionExecLike,
+} from './vision.js'
+
 export const name = 'dsh-android'
 
 /** Services this plugin's root fiber requires. */
@@ -232,10 +246,15 @@ type HostContext = Context & {
 export function apply(ctx: Context): () => Promise<void> {
   const hostCtx = ctx as HostContext
   const host = new AndroidHostController()
-  const tools = createAndroidTools(host)
-  const uiTools = createAndroidUiTools(host)
-  const ocrTools = createAndroidOcrTools(host)
-  const rowTools = createAndroidRowTools(host)
+  // Native multimodal delivery: when the host mounts the attachment store
+  // and the routed model declares image input, the capture tools attach the
+  // screenshot itself as an image block (vision.ts; absent services simply
+  // keep the text-only behavior).
+  const vision = resolveVisionServices(ctx)
+  const tools = createAndroidTools(host, { vision })
+  const uiTools = createAndroidUiTools(host, { vision })
+  const ocrTools = createAndroidOcrTools(host, { vision })
+  const rowTools = createAndroidRowTools(host, { vision })
   const logTools = createAndroidLogTools(host)
   // Debugging & memory diagnostics: created once so the same disposer can
   // stop new calls from starting while the plugin tears down.

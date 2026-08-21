@@ -51,6 +51,7 @@ import {
   type AndroidScreenshotResult,
 } from './tool-support.js'
 import { screenshotDir } from './stream-access.js'
+import { IMAGE_REF_SCHEMA, renderJsonWithImage, type AndroidVisionServices } from './vision.js'
 
 export * from './tool-support.js'
 export * from './tool-apps.js'
@@ -112,6 +113,8 @@ export interface AndroidInteractResult extends AndroidScreenshotResult {
 export interface AndroidToolsOptions {
   /** Plugin-owned cache root (default `<tmp>/dsh-android`). */
   cacheDir?: string
+  /** Optional attachments+llm services for native image delivery. */
+  vision?: AndroidVisionServices
 }
 
 /** The eight core tool definitions bound to one host controller. */
@@ -128,6 +131,7 @@ export interface AndroidTools {
 
 /** Create the eight `android_*` core tool definitions bound to one host. */
 export function createAndroidTools(host: AndroidHostController, options: AndroidToolsOptions = {}): AndroidTools {
+  const vision = options.vision
   const cacheDir = options.cacheDir ?? join(tmpdir(), 'dsh-android')
   // The screenshot ROUTE serves exactly one directory (stream-access's
   // screenshotDir()), so the default store must BE that directory or every
@@ -392,15 +396,17 @@ export function createAndroidTools(host: AndroidHostController, options: Android
           width: { type: 'integer' },
           height: { type: 'integer' },
           device: { ...deviceSchema, required: true },
+          image: IMAGE_REF_SCHEMA,
         },
       },
-      render: renderJson,
+      render: renderJsonWithImage,
       presentationMeta: (_args: unknown, value: JsonValue): JsonValue => screenshotMeta(value),
     },
     timeoutMs: 120_000,
-    async execute(args: { device?: string }) {
+    async execute(args: { device?: string }, exec) {
       const { device, summary } = await resolveTarget(host, 'android_screenshot', args.device)
-      return captureScreenshot(host, screenshots, 'android_screenshot', device, summary)
+      return captureScreenshot(host, screenshots, 'android_screenshot', device, summary,
+        vision === undefined ? undefined : { services: vision, exec })
     },
     presentCall: (args: { device?: string }) => ({
       card: 'generic',
@@ -483,13 +489,14 @@ export function createAndroidTools(host: AndroidHostController, options: Android
           width: { type: 'integer' },
           height: { type: 'integer' },
           device: { ...deviceSchema, required: true },
+          image: IMAGE_REF_SCHEMA,
         },
       },
-      render: renderJson,
+      render: renderJsonWithImage,
       presentationMeta: (_args: unknown, value: JsonValue): JsonValue => screenshotMeta(value),
     },
     timeoutMs: 180_000,
-    async execute(args: AndroidInteractArgs) {
+    async execute(args: AndroidInteractArgs, exec) {
       const { device, summary } = await resolveTarget(host, 'android_interact', args.device)
       try {
         await performInteract(host, device.serial, args)
@@ -504,7 +511,8 @@ export function createAndroidTools(host: AndroidHostController, options: Android
       // round trip; 300 ms is the settle window dsh-ios measured for the same
       // purpose, and Android's transitions land inside it.
       await sleep(INTERACT_SETTLE_MS)
-      const screenshot = await captureScreenshot(host, screenshots, 'android_interact', device, summary)
+      const screenshot = await captureScreenshot(host, screenshots, 'android_interact', device, summary,
+        vision === undefined ? undefined : { services: vision, exec })
       return { action: args.action, ...screenshot } satisfies AndroidInteractResult
     },
     presentCall: (args: AndroidInteractArgs) => ({
