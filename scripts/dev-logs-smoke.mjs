@@ -36,6 +36,10 @@ if (logPath) appendFileSync(logPath, JSON.stringify(argv) + '\\n')
 let rest = argv
 if (rest[0] === '-s') rest = rest.slice(2)
 const out = text => process.stdout.write(text.endsWith('\\n') ? text : text + '\\n')
+// Success paths NEVER call process.exit(): it discards buffered stdout on
+// Linux pipes (CI saw 900 chatty lines arrive as 251). Letting the event
+// loop drain flushes everything; \`handled\` guards the fallthrough.
+let handled = false
 
 if (rest[0] === 'devices') {
   out([
@@ -43,9 +47,9 @@ if (rest[0] === 'devices') {
     'emulator-5554          device product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 transport_id:1',
     '',
   ].join('\\n'))
-  process.exit(0)
+  handled = true
 }
-if (rest[0] === 'shell') {
+if (!handled && rest[0] === 'shell') {
   const command = rest.slice(1).join(' ')
   if (command.includes('getprop ro.product.model')) {
     out('sdk_gphone64_arm64\\nGoogle\\n14\\n34')
@@ -61,29 +65,31 @@ if (rest[0] === 'shell') {
     process.stderr.write('fake-adb: unhandled shell ' + command + '\\n')
     process.exit(1)
   }
-  process.exit(0)
+  handled = true
 }
-if (rest[0] === 'logcat') {
+if (!handled && rest[0] === 'logcat') {
   const count = Number(process.env.DSH_SMOKE_LOG_LINES ?? '5')
   const line = index => '08-21 20:08:' + String(index % 60).padStart(2, '0')
     + '.000 I/Smoke( 1234): line ' + index
   if (rest.includes('-d')) {
     out('--------- beginning of main')
     for (let index = 0; index < count; index += 1) out(line(index))
-    process.exit(0)
+  } else {
+    // follow mode: stream until reaped, then record that we exited cleanly.
+    const marker = process.env.DSH_SMOKE_FOLLOW_MARKER
+    const stop = () => {
+      if (marker) { try { writeFileSync(marker, 'reaped') } catch {} }
+      process.stdout.end(() => process.exit(0))
+    }
+    process.on('SIGTERM', stop)
+    process.on('SIGINT', stop)
+    let index = 0
+    const timer = setInterval(() => { out(line(index)); index += 1 }, 30)
+    setTimeout(() => { clearInterval(timer); stop() }, 20000).unref?.()
   }
-  // follow mode: stream until reaped, then record that we exited cleanly.
-  const marker = process.env.DSH_SMOKE_FOLLOW_MARKER
-  const stop = () => {
-    if (marker) { try { writeFileSync(marker, 'reaped') } catch {} }
-    process.exit(0)
-  }
-  process.on('SIGTERM', stop)
-  process.on('SIGINT', stop)
-  let index = 0
-  const timer = setInterval(() => { out(line(index)); index += 1 }, 30)
-  setTimeout(() => { clearInterval(timer); stop() }, 20000).unref?.()
-} else {
+  handled = true
+}
+if (!handled) {
   process.stderr.write('fake-adb: unhandled ' + JSON.stringify(argv) + '\\n')
   process.exit(1)
 }
