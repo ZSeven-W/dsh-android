@@ -456,6 +456,8 @@ function AndroidPanelSurface({
   const dockLeaseRef = useRef<AndroidPanelDockLease>()
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
   const [dockUnavailable, setDockUnavailable] = useState(false)
+  // Right-edge px a foreign sidebar occupies; the surface docks left of it.
+  const [dockOffset, setDockOffset] = useState(0)
   const [widthState, dispatchWidth] = useReducer(
     androidPanelWidthStateNext,
     androidPanelWidthBounds(window.innerWidth).initial,
@@ -502,15 +504,17 @@ function AndroidPanelSurface({
       return
     }
     const computedMarginRight = Number.parseFloat(window.getComputedStyle(root).marginRight)
-    const lease = claimAndroidPanelDock(root, dockOwnerId, width, computedMarginRight)
+    const lease = claimAndroidPanelDock(root, dockOwnerId, width, computedMarginRight, window.innerWidth)
     if (lease === undefined) {
       setDockUnavailable(true)
       return
     }
     dockLeaseRef.current = lease
+    setDockOffset(lease.offset)
     return () => {
       if (dockLeaseRef.current === lease) dockLeaseRef.current = undefined
       lease.release()
+      setDockOffset(0)
     }
   }, [dockOwnerId, fullscreen, width])
 
@@ -620,8 +624,9 @@ function AndroidPanelSurface({
   return (
     <section
       ref={surfaceRef}
-      style={{ ...surfaceStyles.surface, width }}
+      style={{ ...surfaceStyles.surface, width, right: dockOffset }}
       data-android-panel-surface="docked"
+      data-android-dock-offset={dockOffset > 0 ? String(dockOffset) : undefined}
       role="complementary"
       aria-label={copy.android}
     >

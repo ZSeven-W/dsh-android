@@ -1012,10 +1012,33 @@ try {
   step(
     'the dock lease is exclusive and restores the root on release',
     lease !== undefined
+      && lease.offset === 0
       && fakeRoot.style.marginRight === '380px'
       && stolen === undefined
       && (lease.release(), fakeRoot.style.marginRight === '' && fakeRoot.dataset[client.ANDROID_PANEL_DOCK_ATTRIBUTE] === undefined),
-    'fail-closed around another plugin owning the margin',
+    'fail-closed around a second instance of ourselves',
+  )
+  // #2: a foreign sidebar (dsh-better-sidebar) already holds a root margin —
+  // the lease now COEXISTS: its width becomes the surface's right offset and
+  // the reserved margin stacks on top of it.
+  const foreignRoot = { dataset: {}, style: { marginRight: '300px', minWidth: '' } }
+  const beside = client.claimAndroidPanelDock(foreignRoot, 'owner-a', 380, 300, 1700)
+  step(
+    'a foreign sidebar margin is coexisted with, not modal-overlaid (#2)',
+    beside !== undefined
+      && beside.offset === 300
+      && foreignRoot.style.marginRight === '680px'
+      && (beside.update(400), foreignRoot.style.marginRight === '700px')
+      && (beside.release(), foreignRoot.style.marginRight === '300px'
+        && foreignRoot.dataset[client.ANDROID_PANEL_DOCK_ATTRIBUTE] === undefined),
+    'offset 300 + width stacks; release restores the foreign margin',
+  )
+  step(
+    'a foreign sidebar hogging most of the viewport still falls back to the overlay',
+    client.claimAndroidPanelDock(
+      { dataset: {}, style: { marginRight: '900px', minWidth: '' } }, 'owner-a', 380, 900, 1200,
+    ) === undefined,
+    `foreign 900px of 1200px viewport exceeds the ${client.ANDROID_DOCK_MAX_FOREIGN_FRACTION} fraction cap`,
   )
 } catch (error) {
   step('smoke suite completed without an unexpected throw', false, error instanceof Error ? (error.stack ?? error.message) : String(error))

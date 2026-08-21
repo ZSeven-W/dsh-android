@@ -175,6 +175,7 @@ export {
 } from './android-toolbar.js'
 export {
   ANDROID_PANEL_DOCK_ATTRIBUTE,
+  ANDROID_DOCK_MAX_FOREIGN_FRACTION,
   claimAndroidPanelDock,
   type AndroidPanelDockLease,
 } from './android-panel-dock.js'
