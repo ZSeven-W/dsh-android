@@ -1,6 +1,6 @@
 {
   "name": "@zseven-w/dsh-android",
-  "version": "0.1.0-rc.2",
+  "version": "0.1.0-rc.3",
   "description": "DeepSeek Harness plugin for Android — build, run, and interact with a live emulator or USB device stream inside a conversation, driven entirely through adb. Tested with DSH 0.1.1-rc.1.",
   "license": "MIT",
   "keywords": [

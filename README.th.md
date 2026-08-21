@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; รีลีสปลั๊กอินปัจจุบัน: <code>0.1.0-rc.2</code> &middot; ทดสอบกับ DSH <code>0.1.1-rc.1</code></sub>
+  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; รีลีสปลั๊กอินปัจจุบัน: <code>0.1.0-rc.3</code> &middot; ทดสอบกับ DSH <code>0.1.1-rc.1</code></sub>
 </p>
 
 <p align="center">
