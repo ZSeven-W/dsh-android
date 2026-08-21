@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./docs/images/dsh-android-logo.png" alt="DSH Android" width="120" />
+</p>
+
 <h1 align="center">DSH Android</h1>
 
 <p align="center">
@@ -6,12 +10,19 @@
 </p>
 
 <p align="center">
-  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; Current plugin release: <code>0.1.0-rc.1</code> &middot; Tested with DSH <code>0.1.0-rc.6</code></sub>
+  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; Current plugin release: <code>0.1.0-rc.1</code> &middot; Tested with DSH <code>0.1.1-rc.1</code></sub>
 </p>
 
 <p align="center">
-  <b>English</b> &middot; <a href="./README.zh.md">简体中文</a>
+  <b>English</b> &middot; <a href="./README.zh.md">简体中文</a> &middot; <a href="./README.zh-TW.md">繁體中文</a> &middot; <a href="./README.ja.md">日本語</a> &middot; <a href="./README.ko.md">한국어</a> &middot; <a href="./README.fr.md">Français</a> &middot; <a href="./README.es.md">Español</a> &middot; <a href="./README.de.md">Deutsch</a> &middot; <a href="./README.pt.md">Português</a> &middot; <a href="./README.ru.md">Русский</a> &middot; <a href="./README.hi.md">हिन्दी</a> &middot; <a href="./README.tr.md">Türkçe</a> &middot; <a href="./README.th.md">ไทย</a> &middot; <a href="./README.vi.md">Tiếng Việt</a> &middot; <a href="./README.id.md">Bahasa Indonesia</a>
 </p>
+
+<br />
+
+<p align="center">
+  <img src="./docs/images/dsh-android-overview.png" alt="DSH Android — a live Android device inside the conversation" width="100%" />
+</p>
+<p align="center"><sub>An Android device streamed and controlled from inside a DSH conversation — the agent's tool call in the center, the live device panel on the right</sub></p>
 
 ## Why DSH Android
 
@@ -189,7 +200,6 @@ devices are never affected.
 
 - **A higher-frame-rate source.** The `StreamSource` seam is deliberately pluggable: an `scrcpy-server` + WebCodecs H.264 path would replace the per-frame PNG stream without touching the routes, the tools, or the panel.
 - **Compose preview hot reload.** The iOS twin hot-swaps SwiftUI previews as a dylib; Compose has no equivalent hot-swap primitive today, so this stays a future item rather than a shipped-and-flaky one.
-- **The remaining 13 language READMEs.** English and Simplified Chinese ship now; the other locales the iOS twin carries follow.
 
 ## Ecosystem
 

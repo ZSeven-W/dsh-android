@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./docs/images/dsh-android-logo.png" alt="DSH Android" width="120" />
+</p>
+
 <h1 align="center">DSH Android</h1>
 
 <p align="center">
@@ -6,12 +10,19 @@
 </p>
 
 <p align="center">
-  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; 当前插件版本: <code>0.1.0-rc.1</code> &middot; 已在 DSH <code>0.1.0-rc.6</code> 上验证</sub>
+  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; 当前插件版本: <code>0.1.0-rc.1</code> &middot; 已在 DSH <code>0.1.1-rc.1</code> 上验证</sub>
 </p>
 
 <p align="center">
-  <a href="./README.md">English</a> &middot; <b>简体中文</b>
+  <a href="./README.md">English</a> &middot; <b>简体中文</b> &middot; <a href="./README.zh-TW.md">繁體中文</a> &middot; <a href="./README.ja.md">日本語</a> &middot; <a href="./README.ko.md">한국어</a> &middot; <a href="./README.fr.md">Français</a> &middot; <a href="./README.es.md">Español</a> &middot; <a href="./README.de.md">Deutsch</a> &middot; <a href="./README.pt.md">Português</a> &middot; <a href="./README.ru.md">Русский</a> &middot; <a href="./README.hi.md">हिन्दी</a> &middot; <a href="./README.tr.md">Türkçe</a> &middot; <a href="./README.th.md">ไทย</a> &middot; <a href="./README.vi.md">Tiếng Việt</a> &middot; <a href="./README.id.md">Bahasa Indonesia</a>
 </p>
+
+<br />
+
+<p align="center">
+  <img src="./docs/images/dsh-android-overview.png" alt="DSH Android — 对话里的实时 Android 设备" width="100%" />
+</p>
+<p align="center"><sub>在 DSH 对话中直接启动、投流并操作 Android 设备 —— 中间是 Agent 的工具调用，右侧是实时设备面板</sub></p>
 
 ## 为什么用 DSH Android
 
@@ -188,7 +199,6 @@ emulator -avd <名称> -gpu swiftshader_indirect
 
 - **更高帧率的帧源。** `StreamSource` 接口是刻意留出的插拔缝：`scrcpy-server` + WebCodecs H.264 路径可以替换掉逐帧 PNG 流，而不必改动路由、工具或面板。
 - **Compose 预览热重载。** iOS 版把 SwiftUI 预览编成 dylib 热替换；Compose 目前没有等价的热替换原语，因此这一项留在未来，而不是先做一个不稳的版本。
-- **其余 13 个语种 README。** 现在先发英文与简体中文，iOS 版携带的其他语种随后跟上。
 
 ## 生态
 
