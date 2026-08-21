@@ -324,10 +324,33 @@ async function main() {
     await expectThrow(step, 'an aborted follow rejects rather than running its full window',
       () => pending, /smoke abort/)
 
+    // ── issue-#1-family: follow mode must survive win32 (no process groups) ──
+    // process.kill(-pid) throws on Windows, so every follow window ended with
+    // an error there. With the platform stubbed, the window must close cleanly
+    // and the child must still be reaped through plain child.kill().
+    {
+      const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+      try {
+        reset()
+        const marker = join(shim, 'follow-win32-marker')
+        const followed = await withEnv({ DSH_SMOKE_FOLLOW_MARKER: marker }, async () =>
+          androidLogs.execute({ mode: 'follow', duration_seconds: 1 }, makeExec('android_logs', {})))
+        step('win32: a follow window closes cleanly without process groups',
+          followed.mode === 'follow' && typeof followed.lineCount === 'number',
+          `${followed.lineCount} lines captured`)
+        await new Promise(resolve => setTimeout(resolve, 400))
+        step('win32: the follow child is still reaped via plain kill',
+          readFileSync(marker, 'utf8') === 'reaped')
+      } finally {
+        if (realPlatform) Object.defineProperty(process, 'platform', realPlatform)
+      }
+    }
+
     await host.dispose()
   })
 
-  finish()
+finish()
 }
 
 try {

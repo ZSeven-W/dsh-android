@@ -192,10 +192,16 @@ export class LogLineRing {
  * Kill the whole adb child's process group. The child is spawned detached so
  * it leads its own group; signalling the group reaps the `adb` client before
  * it can be left holding an open logcat connection to the daemon.
+ *
+ * Windows has neither process groups nor negative-PID kills — there
+ * `process.kill(-pid)` THROWS and follow mode ended every window with an
+ * error. adb.exe is a single client process, so `child.kill()` (Node maps
+ * it to TerminateProcess) is the whole reap on win32; the device-side
+ * logcat dies with its transport.
  */
 function signalProcessGroup(child: LogChild, signal: NodeJS.Signals): void {
   const pid = child.pid
-  if (pid === undefined) {
+  if (pid === undefined || process.platform === 'win32') {
     child.kill(signal)
     return
   }
@@ -237,7 +243,9 @@ export function runLogCapture(options: RunLogOptions): Promise<LogCapture> {
   const child: LogChild = spawn(adb, ['-s', serial, ...args], {
     stdio: ['ignore', 'pipe', 'pipe'],
     // Group leader so one kill reaps the adb client and anything it forked.
-    detached: true,
+    // Not on Windows: detached there means a separately-consoled process no
+    // group signal can reach, and plain kill() is the correct reap anyway.
+    detached: process.platform !== 'win32',
   })
   child.stdout.on('data', (chunk: Buffer) => ring.push(chunk))
   child.stderr.on('data', (chunk: Buffer) => {
