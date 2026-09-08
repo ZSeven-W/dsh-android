@@ -187,6 +187,19 @@ export interface ExecOptions {
   serial?: string
   timeoutMs?: number
   maxBuffer?: number
+  /**
+   * Aborts the child and rejects with an `AbortError`-named error when fired.
+   * Forwarded straight to `child_process.execFile`; callers that do not own a
+   * signal simply omit it.
+   */
+  signal?: AbortSignal
+}
+
+/** A cancellation error QA recognizes by `name === 'AbortError'`. */
+function abortError(message: string): Error {
+  const error = new Error(message)
+  error.name = 'AbortError'
+  return error
 }
 
 /** Name the actual cause of a dead child: timeout, signal, or exit status. */
@@ -209,8 +222,13 @@ function execBinary(
       timeout: timeoutMs,
       maxBuffer: options.maxBuffer ?? MAX_EXEC_BUFFER,
       encoding: 'utf8',
+      signal: options.signal,
     }, (error, stdout, stderr) => {
       if (error !== null) {
+        if (options.signal?.aborted === true) {
+          reject(abortError('adb ' + args.join(' ') + ' was aborted'))
+          return
+        }
         const cause = describeExecFailure(error, timeoutMs)
         const detail = stderr.trim()
         const exitCode = typeof (error as { code?: unknown }).code === 'number' ? (error as { code: number }).code : null
@@ -258,7 +276,7 @@ export class AdbToolchain {
    * Run `adb -s <serial> exec-out <command…>` and collect BINARY stdout.
    * exec-out skips the pty so PNG bytes (screencap) survive unmangled.
    */
-  execOut(serial: string, command: readonly string[], options: { timeoutMs?: number; maxBuffer?: number } = {}): Promise<Buffer> {
+  execOut(serial: string, command: readonly string[], options: { timeoutMs?: number; maxBuffer?: number; signal?: AbortSignal } = {}): Promise<Buffer> {
     const adb = this.requireAdb()
     const timeoutMs = options.timeoutMs ?? EXEC_TIMEOUT_MS
     return new Promise((resolve, reject) => {
@@ -266,8 +284,13 @@ export class AdbToolchain {
         timeout: timeoutMs,
         maxBuffer: options.maxBuffer ?? MAX_EXEC_BUFFER,
         encoding: 'buffer',
+        signal: options.signal,
       }, (error, stdout, stderr) => {
         if (error !== null) {
+          if (options.signal?.aborted === true) {
+            reject(abortError('adb exec-out ' + command.join(' ') + ' was aborted'))
+            return
+          }
           const cause = describeExecFailure(error, timeoutMs)
           const detail = stderr.toString('utf8').trim()
           reject(new AdbError(
@@ -284,7 +307,7 @@ export class AdbToolchain {
   }
 
   /** Run `adb -s <serial> shell <command…>` and return trimmed stdout. */
-  async shell(serial: string, command: readonly string[], options: { timeoutMs?: number; maxBuffer?: number } = {}): Promise<string> {
+  async shell(serial: string, command: readonly string[], options: { timeoutMs?: number; maxBuffer?: number; signal?: AbortSignal } = {}): Promise<string> {
     const { stdout } = await this.exec(['shell', ...command], { serial, ...options })
     return stdout.replace(/\r\n/g, '\n')
   }

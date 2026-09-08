@@ -64,12 +64,16 @@ export interface UiBounds {
 export interface UiTreeNode {
   /** Trailing segment of the `class` attribute, e.g. `android.widget.Button` → `Button`. */
   type: string
+  /** Full `class` attribute, e.g. `android.widget.Button`, when non-empty. */
+  className?: string
   /** `text` attribute, when non-empty. */
   text?: string
   /** `content-desc` attribute, when non-empty. */
   contentDesc?: string
   /** `resource-id` attribute, when non-empty. */
   resourceId?: string
+  /** `package` attribute (the owning app), when non-empty. */
+  packageName?: string
   bounds: UiBounds
   /** Present ONLY when the control is disabled (`enabled="false"`). */
   enabled?: boolean
@@ -79,6 +83,11 @@ export interface UiTreeNode {
   clickable?: boolean
   /** Present ONLY when true. */
   scrollable?: boolean
+  /**
+   * Present ONLY when `password="true"`: a secure/password text input whose
+   * `text`/content-desc value must be withheld from QA-facing surfaces.
+   */
+  password?: boolean
   children: UiTreeNode[]
 }
 
@@ -286,18 +295,24 @@ function toUiTreeNode(element: XmlElement): UiTreeNode {
     bounds: parseBounds(attributes.bounds) ?? { x: 0, y: 0, w: 0, h: 0 },
     children: [],
   }
+  const className = attributeText(attributes, 'class')
+  if (className !== undefined) node.className = className
   const text = attributeText(attributes, 'text')
   if (text !== undefined) node.text = text
   const contentDesc = attributeText(attributes, 'content-desc')
   if (contentDesc !== undefined) node.contentDesc = contentDesc
   const resourceId = attributeText(attributes, 'resource-id')
   if (resourceId !== undefined) node.resourceId = resourceId
+  const packageName = attributeText(attributes, 'package')
+  if (packageName !== undefined) node.packageName = packageName
   // Interesting state only: absent means enabled / not focused / not
-  // clickable / not scrollable (see the module header).
+  // clickable / not scrollable (see the module header). The password flag is
+  // preserved so QA-facing surfaces can withhold the field's value.
   if (attributes.enabled === 'false') node.enabled = false
   if (isTrue(attributes, 'focused')) node.focused = true
   if (isTrue(attributes, 'clickable')) node.clickable = true
   if (isTrue(attributes, 'scrollable')) node.scrollable = true
+  if (isTrue(attributes, 'password')) node.password = true
   for (const child of element.children) {
     if (child.name === 'node') node.children.push(toUiTreeNode(child))
   }
@@ -371,10 +386,10 @@ export interface UiTreeToolchain {
 export async function dumpUiTreeXml(
   toolchain: UiTreeToolchain,
   serial: string,
-  options: { timeoutMs?: number } = {},
+  options: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<string> {
   const timeoutMs = options.timeoutMs ?? DUMP_TIMEOUT_MS
-  const execOptions = { timeoutMs, maxBuffer: DUMP_MAX_BUFFER }
+  const execOptions = { timeoutMs, maxBuffer: DUMP_MAX_BUFFER, ...(options.signal === undefined ? {} : { signal: options.signal }) }
   let primaryFailure: string | undefined
   // "could not get idle state" earns exactly one retry after a short pause:
   // a transient animation (screen-on ripple, app launch) settles in well
@@ -436,7 +451,7 @@ export async function dumpUiTreeXml(
 export async function readUiTree(
   toolchain: UiTreeToolchain,
   serial: string,
-  options: { timeoutMs?: number } = {},
+  options: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<ParsedUiTree> {
   return parseUiTree(await dumpUiTreeXml(toolchain, serial, options))
 }
@@ -482,13 +497,16 @@ export function nodeMatchesFilter(node: UiTreeNode, needle: string): boolean {
 
 function copyNode(node: UiTreeNode): UiTreeNode {
   const copy: UiTreeNode = { type: node.type, bounds: { ...node.bounds }, children: [] }
+  if (node.className !== undefined) copy.className = node.className
   if (node.text !== undefined) copy.text = node.text
   if (node.contentDesc !== undefined) copy.contentDesc = node.contentDesc
   if (node.resourceId !== undefined) copy.resourceId = node.resourceId
+  if (node.packageName !== undefined) copy.packageName = node.packageName
   if (node.enabled !== undefined) copy.enabled = node.enabled
   if (node.focused !== undefined) copy.focused = node.focused
   if (node.clickable !== undefined) copy.clickable = node.clickable
   if (node.scrollable !== undefined) copy.scrollable = node.scrollable
+  if (node.password !== undefined) copy.password = node.password
   return copy
 }
 

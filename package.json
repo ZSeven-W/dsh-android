@@ -32,6 +32,10 @@
       "types": "./lib/types/client/index.d.ts",
       "default": "./lib/client.js"
     },
+    "./driver": {
+      "types": "./lib/qa-driver.d.ts",
+      "default": "./lib/qa-driver.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -49,7 +53,7 @@
     "build": "node scripts/run-tool.mjs tsc -p tsconfig.json && pnpm run build:client",
     "build:client": "node scripts/run-tool.mjs tsc -p tsconfig.client.json && node scripts/run-tool.mjs tsdown src/client/index.tsx --format cjs --platform browser --target es2022 --tsconfig tsconfig.client.json --deps.never-bundle react --deps.never-bundle react/jsx-runtime --deps.never-bundle react-dom --deps.never-bundle react-dom/client --out-dir .client-build --clean --sourcemap --logLevel warn && node scripts/build-client.mjs",
     "typecheck": "node scripts/run-tool.mjs tsc -p tsconfig.json && node scripts/run-tool.mjs tsc -p tsconfig.client.json",
-    "test": "node scripts/dev-adb-smoke.mjs && node scripts/dev-tools-smoke.mjs && node scripts/dev-routes-static-smoke.mjs && node scripts/dev-uitree-smoke.mjs && node scripts/dev-logs-smoke.mjs && node scripts/dev-panel-smoke.mjs && node scripts/dev-vision-smoke.mjs"
+    "test": "node scripts/dev-adb-smoke.mjs && node scripts/dev-tools-smoke.mjs && node scripts/dev-routes-static-smoke.mjs && node scripts/dev-uitree-smoke.mjs && node scripts/dev-qa-driver-smoke.mjs && node scripts/dev-logs-smoke.mjs && node scripts/dev-panel-smoke.mjs && node scripts/dev-vision-smoke.mjs"
   },
   "packageManager": "pnpm@10.12.1",
   "pnpm": {

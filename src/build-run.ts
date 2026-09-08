@@ -478,11 +478,25 @@ export async function buildRun(options: BuildRunOptions): Promise<AndroidBuildRu
  * name is not knowable without reading the manifest off the device; monkey
  * resolves the LAUNCHER intent itself. Its "no activities found" answer is
  * printed on stdout with exit code 0, so the output is inspected.
+ *
+ * Returns the raw monkey output (the honest receipt); callers that treat a
+ * clean exit 0 as "app launched" do so at their own risk.
  */
-export async function launchPackage(toolchain: AdbToolchain, serial: string, packageName: string): Promise<void> {
-  const output = await toolchain.shell(serial, [
-    'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1',
-  ], { timeoutMs: LAUNCH_TIMEOUT_MS })
+/** The `adb shell monkey` argument vector `launchPackage` sends. */
+export function launchPackageCommand(packageName: string): string[] {
+  return ['monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1']
+}
+
+export async function launchPackage(
+  toolchain: { shell: AdbToolchain['shell'] },
+  serial: string,
+  packageName: string,
+  options: { timeoutMs?: number; signal?: AbortSignal } = {},
+): Promise<string> {
+  const output = await toolchain.shell(serial, launchPackageCommand(packageName), {
+    timeoutMs: options.timeoutMs ?? LAUNCH_TIMEOUT_MS,
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  })
   if (/No activities found|Error:|monkey aborted/u.test(output)) {
     // Some packages (services, or apps whose entry point is not a LAUNCHER
     // activity) have nothing monkey can start — say which case this is.
@@ -492,6 +506,10 @@ export async function launchPackage(toolchain: AdbToolchain, serial: string, pac
       + 'installed; run android_list_apps to check',
     )
   }
+  // Honest receipt: the raw monkey output is returned verbatim. A clean exit 0
+  // is NOT translated into "the app launched" — the QA wrapper verifies via
+  // its own foreground-app read instead.
+  return output
 }
 
 /** True when `path` looks like an installable APK on disk. */
