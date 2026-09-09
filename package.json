@@ -1,6 +1,6 @@
 {
   "name": "@zseven-w/dsh-android",
-  "version": "0.1.0-rc.4",
+  "version": "0.1.0-rc.5",
   "description": "DeepSeek Harness plugin for Android — build, run, and interact with a live emulator or USB device stream inside a conversation, driven entirely through adb. Tested with DSH 0.1.1-rc.1.",
   "license": "MIT",
   "keywords": [
@@ -51,7 +51,7 @@
   ],
   "scripts": {
     "build": "node scripts/run-tool.mjs tsc -p tsconfig.json && pnpm run build:client",
-    "build:client": "node scripts/run-tool.mjs tsc -p tsconfig.client.json && node scripts/run-tool.mjs tsdown src/client/index.tsx --format cjs --platform browser --target es2022 --tsconfig tsconfig.client.json --deps.never-bundle react --deps.never-bundle react/jsx-runtime --deps.never-bundle react-dom --deps.never-bundle react-dom/client --out-dir .client-build --clean --sourcemap --logLevel warn && node scripts/build-client.mjs",
+    "build:client": "node scripts/run-tool.mjs tsc -p tsconfig.client.json && node scripts/run-tool.mjs tsdown src/client/index.tsx --config tsdown.config.mjs --format cjs --platform browser --target es2022 --tsconfig tsconfig.client.json --out-dir .client-build --clean --sourcemap --logLevel warn && node scripts/build-client.mjs",
     "typecheck": "node scripts/run-tool.mjs tsc -p tsconfig.json && node scripts/run-tool.mjs tsc -p tsconfig.client.json",
     "test": "node scripts/dev-adb-smoke.mjs && node scripts/dev-tools-smoke.mjs && node scripts/dev-routes-static-smoke.mjs && node scripts/dev-uitree-smoke.mjs && node scripts/dev-qa-driver-smoke.mjs && node scripts/dev-logs-smoke.mjs && node scripts/dev-panel-smoke.mjs && node scripts/dev-vision-smoke.mjs"
   },
@@ -62,21 +62,28 @@
       "esbuild"
     ]
   },
-  "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-theme": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-tool": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-fs": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-host-webserver": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-sandbox-policy": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-session": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+  "dshHostRuntime": {
+    "server": {
+      "requiredServices": ["tools"],
+      "optionalServices": ["skills", "webServer", "attachments", "llm"],
+      "requiredPackages": {
+        "@deepseek-ai/dsh-tools": "^0.1.0-rc.6"
+      }
+    },
+    "client": {
+      "requiredPackages": {
+        "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.6",
+        "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
+        "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.6",
+        "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
+        "@deepseek-ai/dsh-client-ui-theme": "^0.1.0-rc.6",
+        "@deepseek-ai/dsh-client-ui-tool": "^0.1.0-rc.6",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0"
+      },
+      "resolution": "not exercised by the server/headless plugin entry"
+    },
+    "note": "Inert documentation only; host packages are intentionally absent from dependencies and peerDependencies."
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
