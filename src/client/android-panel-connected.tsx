@@ -29,7 +29,7 @@
  */
 
 import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore } from 'react'
-import type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { androidCopy, type AndroidLocale } from './copy.js'
 import {
   ANDROID_CARD_TOOLS,
@@ -84,8 +84,8 @@ export interface AndroidPanelProps {
   block: ToolCallBlock
   /**
    * The session the panel belongs to (the panel host passes the open
-   * request's sessionId). Present → auto-follow is enabled. Absent (the
-   * per-tool details seat) → follow stays off.
+   * request's sessionId). Present → auto-follow is enabled. Absent (a
+   * details-area render without a session) → follow stays off.
    */
   sessionId?: string
   fetcher?: AndroidFetcher
@@ -127,8 +127,8 @@ export function AndroidPanel({
   const [liveOpen, setLiveOpen] = useState(false)
   const [naturalWidth, setNaturalWidth] = useState<number>()
   const [naturalHeight, setNaturalHeight] = useState<number>()
-  // Internal size/frame state for surfaces without a controlling store (the
-  // per-tool details seat); the panel host passes controlled values.
+  // Internal size/frame state for surfaces without a controlling store (a
+  // details-area render); the panel host passes controlled values.
   const [internalSizeMode, setInternalSizeMode] = useState<AndroidPanelSizeMode>(ANDROID_PANEL_SIZE_MODE_FIT)
   const activeSizeMode = sizeMode ?? internalSizeMode
   const handleSizeModeChange = onSizeModeChange ?? setInternalSizeMode
@@ -476,10 +476,13 @@ export interface AndroidDetailsPanelProps {
 }
 
 /**
- * Per-tool details-seat renderer for DSH runtimes that declare
- * `tool.details.toolview` (absent in rc.6 — registration is guarded by
- * `ctx.slots.inject`). The native details column supplies its own header and
- * close control, so the panel body renders without `onClose`.
+ * Details-surface renderer for a selected tool call. On DSH 0.1.5 the tool
+ * layer's details panel dispatches the selected call through the keyed
+ * `tool.call.toolview` owner currency (see details-compat.ts), so this
+ * component takes those props directly; the page-owned panel host
+ * (android-panel-host) carries the live panel surface in this plugin. The
+ * native details column supplies its own header and close control, so the
+ * panel body renders without `onClose`.
  */
 export function AndroidDetailsPanel({
   block,

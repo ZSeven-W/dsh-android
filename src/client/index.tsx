@@ -9,14 +9,14 @@
  * host services exactly like dsh-openpencil/dsh-ios.
  *
  * The device display lives ONLY in the persistent right-side panel
- * (Codex-style): the per-tool `tool.details.toolview` details seat is
- * registered through the same `ctx.slots.inject` guard dsh-openpencil uses, so
- * a future DSH runtime that declares it gets the native details surface for
- * free. The installed rc.6 runtime does NOT declare that seat, so on rc.6 the
- * plugin mounts its own page-owned right panel host and opens it when the user
- * clicks a device tool row. The row-click trigger steps aside if the details
- * seat ever gets declared. Inline tool cards are compact one-line summaries
- * (title, device, badge, "open in sidebar" cue) with NO imagery.
+ * (Codex-style). DSH 0.1.5 has no keyed per-tool details seat: its tool
+ * layer's details renderer dispatches the selected call through the same
+ * `tool.call.toolview` keyed entries this plugin registers, so the native
+ * details surface shows the registered cards, while the plugin mounts its own
+ * page-owned right panel host for the live device experience and opens it
+ * when the user clicks a device tool row. Inline tool cards are compact
+ * one-line summaries (title, device, badge, "open in sidebar" cue) with NO
+ * imagery.
  *
  * A stream-status capsule is registered in the `conversation.input.dock` slot:
  * while the panel is closed and a device stream is online it renders a small
@@ -29,8 +29,10 @@
  */
 
 import { useSyncExternalStore } from 'react'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
@@ -39,11 +41,9 @@ import { AndroidStreamCard, type AndroidCardOptions } from './android-stream-car
 import { AndroidScreenshotCard } from './android-screenshot-card.js'
 import { AndroidBuildRunCard } from './android-build-run-card.js'
 import { ANDROID_CARD_TOOLS } from './protocol.js'
-import { AndroidDetailsPanel } from './android-panel-connected.js'
 import { mountAndroidPanelHost, type AndroidPanelHost } from './android-panel-host.js'
 import { installAndroidPanelRowTrigger, type AndroidPanelSource } from './android-panel-trigger.js'
 import { AndroidStatusCapsule } from './android-status-capsule.js'
-import type { CompatibleToolDetailsViewProps } from './details-compat.js'
 
 // Re-exported so the dev-panel-smoke script reuses the exact wire helpers and
 // pure state machines from the BUILT bundle.
@@ -340,45 +340,6 @@ function registerCard(
   ))
 }
 
-function hostSyncedDetailsPanel(
-  ctx: ClientContext,
-): (props: CompatibleToolDetailsViewProps) => React.JSX.Element {
-  const subscribeTheme = subscribeThemeOf(ctx)
-  const getColorScheme = getColorSchemeOf(ctx)
-  const subscribeLocale = subscribeLocaleOf(ctx)
-  const getLocale = getLocaleOf(ctx)
-
-  const HostSyncedDetailsPanel = (props: CompatibleToolDetailsViewProps): React.JSX.Element => {
-    const colorScheme = useSyncExternalStore(subscribeTheme, getColorScheme, getColorScheme)
-    const locale = useSyncExternalStore(subscribeLocale, getLocale, getLocale)
-    return (
-      <AndroidCardBoundary>
-        <AndroidDetailsPanel {...props} colorScheme={colorScheme} locale={locale} />
-      </AndroidCardBoundary>
-    )
-  }
-  return HostSyncedDetailsPanel
-}
-
-/** Register one per-tool `tool.details.toolview` slot (openpencil shape). */
-function registerDetailsPanel(
-  ctx: ClientContext,
-  toolName: string,
-  onDetailsSlotDeclared: () => (() => void),
-): void {
-  ctx.slots.inject('tool.details.toolview', () => {
-    const disposeRegistration = ctx.slots.register(
-      { name: 'tool.details.toolview', key: toolName },
-      hostSyncedDetailsPanel(ctx),
-    )
-    // A declaring runtime activates the native details seat: the rc.6
-    // fallback (page-owned panel + row-click trigger) steps aside. Noop on
-    // rc.6, where `inject` waits forever for a slot that never appears.
-    const disposeFallback = onDetailsSlotDeclared()
-    return [disposeRegistration, disposeFallback]
-  })
-}
-
 /** Cross-version minimum for the session-scoped input-dock seat. */
 interface CompatibleInputDockProps {
   sessionId: string
@@ -399,21 +360,14 @@ function hostSyncedStatusCapsule(
   return HostSyncedStatusCapsule
 }
 
-const PANEL_TOOLS = [
-  ANDROID_CARD_TOOLS.boot,
-  ANDROID_CARD_TOOLS.buildRun,
-  ANDROID_CARD_TOOLS.interact,
-  ANDROID_CARD_TOOLS.screenshot,
-] as const
-
 /** Register canonical views plus the resident device panel surfaces. */
 export function apply(ctx: ClientContext): void {
-  // rc.6 fallback surface: a page-owned right panel host opened by clicking a
-  // device tool row. Declared up front so the START card can be handed the
-  // auto-open callback that resolves through it.
+  // The device surface is a page-owned right panel host opened by clicking a
+  // device tool row. DSH 0.1.5 has no keyed per-tool details seat (the tool
+  // layer's details renderer dispatches the same `tool.call.toolview` entries
+  // this plugin registers), so the host below always carries the panel.
   let panelHost: AndroidPanelHost | undefined
   let rowTriggerDispose: (() => void) | undefined
-  const detailsSlotDeclared = (): boolean => ctx.slots.spec('tool.details.toolview') !== undefined
 
   // Auto-open: a settled START verb (android_boot) opens the panel once.
   // openIfIdle (not open) so a settle never replaces an already-open panel.
@@ -425,20 +379,6 @@ export function apply(ctx: ClientContext): void {
   registerCard(ctx, ANDROID_CARD_TOOLS.screenshot, AndroidScreenshotCard)
   registerCard(ctx, ANDROID_CARD_TOOLS.interact, AndroidScreenshotCard)
   registerCard(ctx, ANDROID_CARD_TOOLS.buildRun, AndroidBuildRunCard)
-
-  const stepFallbackAside = (): (() => void) => {
-    rowTriggerDispose?.()
-    rowTriggerDispose = undefined
-    panelHost?.close()
-    return () => {}
-  }
-
-  // Per-tool details seat (Codex-style right panel). `slots.inject` waits
-  // while the slot is undeclared — rc.6 never declares it, so this degrades
-  // silently and the page-owned host below carries the surface instead.
-  for (const toolName of PANEL_TOOLS) {
-    registerDetailsPanel(ctx, toolName, stepFallbackAside)
-  }
 
   // Stream-status capsule in the composer input dock (openpencil's
   // selection-chip seat, same `ctx.slots.inject` guard and entry shape).
@@ -455,9 +395,7 @@ export function apply(ctx: ClientContext): void {
         subscribeLocale: subscribeLocaleOf(ctx),
         getLocale: getLocaleOf(ctx),
       })
-      if (!detailsSlotDeclared()) {
-        rowTriggerDispose = installAndroidPanelRowTrigger(document, source => panelHost?.open(source) ?? false)
-      }
+      rowTriggerDispose = installAndroidPanelRowTrigger(document, source => panelHost?.open(source) ?? false)
       return () => {
         rowTriggerDispose?.()
         rowTriggerDispose = undefined

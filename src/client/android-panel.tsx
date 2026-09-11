@@ -18,7 +18,7 @@
  */
 
 import type { CSSProperties, ReactNode, RefObject } from 'react'
-import type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { androidCopy, type AndroidCopy, type AndroidLocale } from './copy.js'
 import type { AndroidDeviceInfo, AndroidFetcher, AndroidScreenshotMeta } from './protocol.js'
 import { useAndroidScreenshot } from './android-screenshot-session.js'

@@ -15,7 +15,7 @@
  * @module @zseven-w/dsh-android/tool-support
  */
 
-import type { JsonValue } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from './json-value.js'
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { AndroidDevice, AndroidDeviceDetails } from './adb.js'

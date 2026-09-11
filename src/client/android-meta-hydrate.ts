@@ -31,7 +31,7 @@
  * @module @zseven-w/dsh-android/client/android-meta-hydrate
  */
 
-import type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import {
   ANDROID_CARD_TOOLS,
   parseAndroidMeta,

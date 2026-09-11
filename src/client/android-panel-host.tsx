@@ -1,8 +1,8 @@
 /**
  * Page-stable owner for the plugin-owned device panel.
  *
- * Mirrors dsh-openpencil's `mountEditorWorkbenchHost`: the rc.6 runtime has
- * no per-tool details seat, so the plugin mounts its own imperative React
+ * Mirrors dsh-openpencil's `mountEditorWorkbenchHost`: the 0.1.5 runtime
+ * has no per-tool details seat, so the plugin mounts its own imperative React
  * root on `document.body` and docks the panel as a fixed right-hand column
  * that stays visible while the conversation scrolls. A dock lease on the DSH
  * root's `margin-right` (see android-panel-dock) pushes the AppFrame over so
@@ -29,7 +29,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
-import type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { AndroidPanel } from './android-panel-connected.js'
 import { androidCopy } from './copy.js'
 import { claimAndroidPanelDock, type AndroidPanelDockLease } from './android-panel-dock.js'
@@ -79,8 +79,6 @@ export function androidSwitchedPanelRequestOf(
     callTime: Date.now(),
     content: [],
     isError: false,
-    callView: null,
-    resultView: null,
     subCalls: [],
     meta: androidSwitchedStreamMetaOf(result),
   }

@@ -30,7 +30,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties } from 'react'
-import type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { androidCopy, type AndroidLocale } from './copy.js'
 import {
   ANDROID_CARD_TOOLS,
@@ -84,8 +84,6 @@ export function androidStreamStatusRequestOf(
     callTime: Date.now(),
     content: [],
     isError: false,
-    callView: null,
-    resultView: null,
     subCalls: [],
     meta: { kind: 'android-stream', device },
   }

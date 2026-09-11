@@ -14,9 +14,9 @@
 import {
   ToolArgsError,
   defineTool,
-  type JsonValue,
   type ToolDefinition,
 } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from './json-value.js'
 import type { AndroidHostController } from './android-host.js'
 import {
   buildRun,

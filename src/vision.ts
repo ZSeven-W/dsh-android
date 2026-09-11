@@ -18,8 +18,9 @@
  * profiles, and older hosts never see a new error.
  *
  * Everything here is typed structurally: the plugin's compiled-against
- * typings (`^0.1.0-rc.6`) predate the attachment/vision APIs, so depending
- * on their type exports would break the independent-checkout build.
+ * typings (`0.1.5-rc.1`) still describe the attachment/vision surfaces
+ * through structural shapes, so depending on their type exports would
+ * break the independent-checkout build.
  * @module @zseven-w/dsh-android/vision
  */
 
@@ -150,8 +151,9 @@ export const IMAGE_REF_SCHEMA = {
 /**
  * Render one JSON summary plus, when the value carries an `image` ref, the
  * image block itself — so an image-capable model SEES the screen instead of
- * reading a path. The cast is deliberate: the compiled-against rc.6 typings
- * predate the `image` content-block entry, while the 0.1.1 runtime walks it.
+ * reading a path. The cast is deliberate: the compiled-against 0.1.5-rc.1
+ * typings expose the `image` content-block entry structurally only, so the
+ * renderer keeps its own block shape for the independent-checkout build.
  */
 export function renderJsonWithImage(_args: unknown, value: unknown): Array<{ type: 'text'; text: string }> {
   const blocks: unknown[] = [{ type: 'text', text: JSON.stringify(value, null, 2) }]
