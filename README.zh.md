@@ -93,6 +93,30 @@ DSH Android 把一台真实的 Android 设备交给 agent，同时把画面交�
 
 - **浏览器从不与 adb 通信，而且根本不存在可通信的内部端口。** 流在本进程内生成、从内存送出；每一个字节都经由 DSH webserver 源上插件自有的 `/_dsh/dsh-android/*` 路由：`/stream/<token>`（实时 multipart PNG）、`/screenshot/<token>`（缓存 PNG），以及 `/grant`、`/switch-device`、`/devices`、`/capture`、`/status`、`/control`、`/device-action`。这比"代理一个 loopback 流服务器"的攻击面严格更小。
 - **三重 loopback 围栏，在读取任何 capability 之前生效。** 传输层对端必须是 loopback 地址，`Host` 头必须指向 loopback 权威（因此 DNS 重绑定的 `Host` 会被拒绝），Fetch-Metadata/`Origin` 必须同源。Host 与 Origin 是调用方可控的数据，绝不单独采信。
+- **反向代理部署可用 `trustedAuthorities` 显式声明。** loopback 对端只证明最后一跳来自本机 —— 在反向代理后面这**永远成立**，而代理转发过来的 `Host` 是部署的公网名，于是上面那些路由一律回 403，插件就只能靠 SSH 隧道使用。这个可选配置让你把那些权威显式列出来，正如 DSH 自己的 `--trusted-host` 为它的 webserver 所做的那样：
+
+  ```yaml
+  - id: dsh-android
+    config:
+      trustedAuthorities:
+        # Host 不带端口时：该主机的任意端口、两种 scheme。
+        - dsh.example.com
+        # 8443 端口、两种 scheme —— 反向代理部署的常见写法。
+        - dsh.example.com:8443
+        # 钉死 scheme，只在确实只服务一种协议时这么写。
+        - https://dsh.example.com:8443
+  ```
+
+  | 条目 | 匹配的 `Host` | 接受的 `Origin` |
+  | --- | --- | --- |
+  | `host` | `host` | 该主机在 80 或 443 |
+  | `host:port` | `host:port` | 该端口上的 `http` 或 `https` |
+  | `https://host` | `host` | 该主机在 443 |
+  | `https://host:port` | `host:port` | 仅该端口上的 `https` |
+
+  **端口始终参与比较**，因为来源就是 scheme + 主机 + 端口：同一主机名、不同端口上的另一个应用发来的 `Origin` 会被拒绝 —— 浏览器把它算作 `same-site` 而不是 `cross-site`，围栏里没有别的东西会拦它，而这类请求即使响应读不到、动作本身也已经执行了。列条目也不会让判定变窄：回环 `Host` 独立判定，所以为 SSH 隧道加一条 `localhost` 不会把本机面板弄坏。
+
+  对端地址那一半**不可配置**：局域网上直接访问 web 端口的客户端，无论怎么写 Host 头都会被拒；伪造的 `X-Forwarded-Host` 也无法凭空造出白名单上没有的条目。把一个权威列进来，等于声明"以这个名义到达的请求已经通过了本部署前面的认证" —— 在反向代理场景下，这个判断只有运维者能做。默认为空，也就是出厂行为。
 - **HMAC-SHA256 capability，10 分钟内过期**，格式为 `base64url(payload).base64url(mac)`，用每个 DSH home 一把的 32 字节密钥签名（`<DSH_HOME>/cache/dsh-android/stream-access.key`，权限 0600，原子创建）。为某台设备签发的 capability 在另一台设备接管流位的瞬间即失效；截图 capability 也无法重放到流路由上。
 - **截图路由只服务唯一一个目录。** 路径用 `lstat` 逐级走查（任何符号链接一律拒绝），以 `realpath` 收尾做包含性校验，用 `O_NOFOLLOW` 打开、限制大小，并在读完后**再校验一次** —— 因此在签发与取用之间被换成符号链接的文件永远不会被送出。
 - **`/grant` 永不启动任何东西。** 它只为已经在线的设备启动帧循环，并且会以 409 `device_busy` 拒绝把流从另一台设备手上抢走。切换设备必须走显式的 `/switch-device` 手势；启动 AVD 则始终属于 `android_boot` 工具。

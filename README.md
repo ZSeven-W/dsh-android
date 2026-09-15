@@ -93,6 +93,32 @@ Coordinates are **normalized 0..1 of the streamed frame** everywhere. The frame 
 
 - **The browser never talks to adb, and there is no inner port to talk to.** The stream is produced in this process and served from memory; every byte crosses the DSH webserver origin through plugin-owned `/_dsh/dsh-android/*` routes: `/stream/<token>` (live multipart PNG), `/screenshot/<token>` (cached PNG), plus `/grant`, `/switch-device`, `/devices`, `/capture`, `/status`, `/control`, and `/device-action`. This is a strictly smaller attack surface than a proxied loopback stream server.
 - **A triple loopback fence, applied before any capability is read.** The transport peer must be a loopback address, the `Host` header must name a loopback authority (so a DNS-rebinding `Host` is rejected), and Fetch-Metadata/`Origin` must be same-origin. Host and Origin are caller-controlled data and are never trusted on their own.
+- **`trustedAuthorities` for deployments reached through a reverse proxy.** A loopback peer proves the last hop came from this machine, which is always true behind a proxy — while the `Host` the proxy forwards is the deployment's public name, so every route above answers 403 and the plugin only works through an SSH tunnel. The optional config accepts those authorities explicitly, the way DSH's own `--trusted-host` does for its webserver:
+
+  ```yaml
+  - id: dsh-android
+    config:
+      trustedAuthorities:
+        # Any port on that host, either scheme, when the Host carries no port.
+        - dsh.example.com
+        # Port 8443 on either scheme — the reverse-proxy spelling.
+        - dsh.example.com:8443
+        # Pinned to one scheme, which is what you want when only one is served.
+        - https://dsh.example.com:8443
+  ```
+
+  An entry may be a bare `host`, a `host:port`, or a pasted origin, and what it covers is decided by what it says:
+
+  | Entry | Matches | `Origin` accepted |
+  | --- | --- | --- |
+  | `host` | `Host: host` | that host on 80 or 443 |
+  | `host:port` | `Host: host:port` | that port on `http` or `https` |
+  | `https://host` | `Host: host` | that host on 443 |
+  | `https://host:port` | `Host: host:port` | `https` on that port only |
+
+  The port is always compared, because an origin is scheme + host + port: an `Origin` from another application on the same hostname but a different port is refused. Browsers classify that as `same-site` rather than `cross-site`, so nothing else in the fence would stop it, and the request would still execute even though its response is unreadable to that origin. Listing an authority never narrows anything either — a loopback `Host` is judged on its own, so adding `localhost` for an SSH tunnel cannot break the local panel.
+
+  The peer-address half is NOT configurable, so a client on the LAN that reaches the web port directly is refused however it writes its Host header, and a forged `X-Forwarded-Host` cannot invent an entry that is not on the list. Listing an authority states that requests arriving under that name have passed whatever authentication the deployment put in front of it — behind a proxy that is a decision only the operator can make. The default is empty, which is exactly the shipped behaviour.
 - **HMAC-SHA256 capabilities expiring within 10 minutes**, formatted `base64url(payload).base64url(mac)` and signed with a 32-byte per-DSH-home key (`<DSH_HOME>/cache/dsh-android/stream-access.key`, mode 0600, created atomically). A capability minted for one device stops working the moment another device takes the stream slot, and a screenshot capability cannot be replayed against the stream route.
 - **The screenshot route serves exactly one directory.** Paths are walked with `lstat` (any symbolic link is refused), finished with a `realpath` containment check, opened with `O_NOFOLLOW`, size-bounded, and re-validated after the read — so a file swapped for a symlink between minting and fetching is never served.
 - **`/grant` never boots anything.** It only starts the frame loop for a device that is already online, and it refuses (409 `device_busy`) to yank the stream away from another device. Switching devices requires the explicit `/switch-device` gesture; booting an AVD stays with the `android_boot` tool.
