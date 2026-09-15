@@ -98,10 +98,14 @@ Coordinates are **normalized 0..1 of the streamed frame** everywhere. The frame 
   ```yaml
   - id: dsh-android
     config:
-      # `host`, `host:port`, or a pasted origin. A bare host matches any port.
       trustedAuthorities:
+        # Portable: that host, either scheme, on the scheme's default port.
         - dsh.example.com
+        # Pinned: this exact origin, compared scheme, host AND port.
+        - https://dsh.example.com:8443
   ```
+
+  An entry may be a bare `host`, a `host:port`, or a pasted origin. A bare host stands for either scheme on that scheme's default port (80/443), which is what makes one entry work for both an HTTP and an HTTPS deployment; a port that is written — including `:443` — is honoured, so `host:8443` means port 8443 on `http`. Because an origin is scheme + host + port, an `Origin` from another application on the same hostname but a different port is refused: browsers classify that as `same-site` rather than `cross-site`, so nothing else in the fence would stop it, and the request would still execute even though its response is unreadable.
 
   The peer-address half is NOT configurable, so a client on the LAN that reaches the web port directly is refused however it writes its Host header, and a forged `X-Forwarded-Host` cannot invent an entry that is not on the list. Listing an authority states that requests arriving under that name have passed whatever authentication the deployment put in front of it — behind a proxy that is a decision only the operator can make. The default is empty, which is exactly the shipped behaviour.
 - **HMAC-SHA256 capabilities expiring within 10 minutes**, formatted `base64url(payload).base64url(mac)` and signed with a 32-byte per-DSH-home key (`<DSH_HOME>/cache/dsh-android/stream-access.key`, mode 0600, created atomically). A capability minted for one device stops working the moment another device takes the stream slot, and a screenshot capability cannot be replayed against the stream route.

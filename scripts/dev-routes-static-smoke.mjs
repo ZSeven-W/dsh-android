@@ -333,6 +333,8 @@ step(
 // block below turns the allowlist on and off around its own assertions, and
 // puts it back to empty so nothing after it inherits a wider fence.
 const DESTINATION_HOST = 'devices.example.test:8443'
+/** The same deployment written the way a browser bar shows it. */
+const DESTINATION_ORIGIN_ENTRY = 'https://devices.example.test:8443'
 
 {
   configureTrustedAuthorities({})
@@ -351,15 +353,35 @@ const DESTINATION_HOST = 'devices.example.test:8443'
   // suite talks to the loopback port) with the deployment's public authority in
   // Host, and a browser Origin that carries no port because it is the default
   // one. Without the allowlist this is the 403 the whole feature exists for.
-  configureTrustedAuthorities({ trustedAuthorities: [DESTINATION_HOST] })
+  configureTrustedAuthorities({ trustedAuthorities: [DESTINATION_ORIGIN_ENTRY] })
   const res = await postJson(route('status'), {}, {
+    host: DESTINATION_HOST,
+    origin: DESTINATION_ORIGIN_ENTRY,
+  })
+  step(
+    'a configured origin is accepted with a loopback peer, Host and Origin on different ports',
+    res.status !== 403,
+    `${res.status} ${res.json?.code ?? 'ok'}`,
+  )
+}
+{
+  // The security half of that: an origin is host AND port, so another
+  // application on the same hostname must not be able to drive these routes.
+  // Browsers call that same-site rather than cross-site, so nothing else in the
+  // fence refuses it.
+  configureTrustedAuthorities({ trustedAuthorities: [DESTINATION_ORIGIN_ENTRY] })
+  const otherPort = await postJson(route('status'), {}, {
+    host: DESTINATION_HOST,
+    origin: 'https://devices.example.test:9443',
+  })
+  const otherPortDefault = await postJson(route('status'), {}, {
     host: DESTINATION_HOST,
     origin: 'https://devices.example.test',
   })
   step(
-    'a configured authority is accepted with a loopback peer (Origin port-normalized)',
-    res.status !== 403,
-    `${res.status} ${res.json?.code ?? 'ok'}`,
+    'a same-hostname origin on another port, explicit or default, is refused (403)',
+    otherPort.status === 403 && otherPortDefault.status === 403,
+    `other port ${otherPort.status}, default port ${otherPortDefault.status}`,
   )
 }
 {
@@ -390,34 +412,41 @@ const DESTINATION_HOST = 'devices.example.test:8443'
     'user:secret@host.example.test',
   ])
   const authorities = minted.map(entry => entry.authority)
+  const byAuthority = new Map(minted.map(entry => [entry.authority, entry]))
   step(
     'the allowlist mints hosts and host:port, de-duplicated, and drops malformed entries',
     authorities.length === 3
       && authorities.includes('devices.example.test')
       && authorities.includes('devices.example.test:8443')
       && authorities.includes('pasted.example.test')
-      && minted.filter(entry => !entry.portless).length === 1,
+      && byAuthority.get('pasted.example.test')?.origin === 'https://pasted.example.test',
     authorities.join(', '),
+  )
+  step(
+    'a bare host takes either scheme on its default port, and a written port pins the origin',
+    byAuthority.get('devices.example.test')?.portless === true
+      && byAuthority.get('devices.example.test:8443')?.origin === 'http://devices.example.test:8443'
+      && byAuthority.get('devices.example.test:8443')?.portless === false,
+    `bare -> ${byAuthority.get('devices.example.test')?.origin || '(either scheme:80/443)'}, :8443 -> ${byAuthority.get('devices.example.test:8443')?.origin}`,
+  )
+  step(
+    'an explicitly written default port survives URL canonicalization',
+    mintTrustedAuthorities(['https://pasted.example.test:443'])[0]?.origin === 'https://pasted.example.test:443'
+      && mintTrustedAuthorities(['pasted.example.test:443'])[0]?.authority === 'pasted.example.test:443',
+    `https://…:443 -> ${mintTrustedAuthorities(['https://pasted.example.test:443'])[0]?.origin}`,
   )
 }
 {
   // The property that makes the whole design safe: the allowlist can never
   // bypass the peer-address half. A LAN client cannot be simulated through a
   // loopback socket, so this asserts the predicate directly.
-  configureTrustedAuthorities({ trustedAuthorities: [DESTINATION_HOST] })
+  // A bare host is the portable entry: it stands for that host on either
+  // scheme's default port, so both headers are consistent for it.
+  configureTrustedAuthorities({ trustedAuthorities: ['devices.example.test'] })
   const { isTrustedRequest } = streamAccess
-  const fromLan = isTrustedRequest({
-    method: 'POST',
-    url: '/',
-    headers: { host: DESTINATION_HOST, origin: 'https://devices.example.test' },
-    socket: { remoteAddress: '203.0.113.7' },
-  }, true)
-  const fromLoopback = isTrustedRequest({
-    method: 'POST',
-    url: '/',
-    headers: { host: DESTINATION_HOST, origin: 'https://devices.example.test' },
-    socket: { remoteAddress: '127.0.0.1' },
-  }, true)
+  const headers = { host: 'devices.example.test', origin: 'https://devices.example.test' }
+  const fromLan = isTrustedRequest({ method: 'POST', url: '/', headers, socket: { remoteAddress: '203.0.113.7' } }, true)
+  const fromLoopback = isTrustedRequest({ method: 'POST', url: '/', headers, socket: { remoteAddress: '127.0.0.1' } }, true)
   step(
     'a non-loopback peer is refused even when its authority IS allowlisted',
     fromLan === false && fromLoopback === true,
