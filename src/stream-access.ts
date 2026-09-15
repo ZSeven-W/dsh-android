@@ -26,6 +26,108 @@ import { SERIAL_PATTERN } from './adb.js'
 /** Hard capability lifetime (tokens expire within 10 minutes). */
 export const TOKEN_TTL_MS = 10 * 60 * 1000
 
+/**
+ * Hosts this deployment deliberately serves, in the `host` or `host:port` form
+ * of an HTTP authority; the port-less form matches any port.
+ *
+ * Why this exists. The fence below refuses anything whose peer is not loopback,
+ * because a client on the LAN can reach the dsh Web port directly and claim
+ * `Host: localhost` — the peer address is the only part of a request a remote
+ * caller cannot write, so it decides. That reasoning holds when the peer IS the
+ * browser. Behind a reverse proxy it is not: the last hop is made by a process
+ * on this machine, so the peer is genuinely loopback while the Host the proxy
+ * forwards is the deployment's public name, and every route answers 403. The
+ * plugin then works only through an SSH tunnel, and not behind the deployment
+ * shape DSH documents for itself: DSH's own `--trusted-host` values are the twin
+ * of this list, and its webserver consults them for exactly this reason.
+ *
+ * Listing an authority here is the operator stating: requests arriving under
+ * this name have passed whatever authentication this deployment put in front of
+ * it. Two properties are load-bearing:
+ *
+ * - The peer-address check still applies first, so a LAN client on the web port
+ *   is refused however it writes its Host header, and a forged
+ *   `X-Forwarded-Host` cannot invent an entry that is not on this list.
+ * - The default is empty, which keeps the shipped behaviour byte-for-byte.
+ */
+export type AndroidTrustConfig = {
+  /** Extra request authorities accepted in addition to a loopback Host. */
+  trustedAuthorities?: readonly string[]
+}
+
+/** One configured entry, pre-split so no call site has to parse it twice. */
+type MintedAuthority = { authority: string; hostname: string; portless: boolean }
+
+let trustedAuthorities: readonly MintedAuthority[] = []
+
+/** Normalize one operator entry to a bare `host[:port]` authority, or nothing. */
+function normalizeAuthorityEntry(entry: string): string | undefined {
+  const trimmed = entry.trim()
+  if (trimmed === '') return undefined
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
+    // A pasted URL is the normal way to fill this in, so accept it — but only
+    // when the URL is nothing BUT an origin.
+    try {
+      const parsed = new URL(trimmed)
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined
+      if (parsed.hostname === '' || parsed.pathname !== '/' || parsed.search !== '' || parsed.hash !== '') return undefined
+      return parsed.host.toLowerCase()
+    } catch {
+      return undefined
+    }
+  }
+  // Reuse the request side's parser so both sides agree on what a bare
+  // authority is: a path, query, fragment, or userinfo disqualifies it.
+  const parsed = parseAuthority(trimmed)
+  return parsed === undefined ? undefined : parsed.host.toLowerCase()
+}
+
+/**
+ * Reduce operator input to sorted, de-duplicated authorities, discarding
+ * anything that is not one. Exported because the shape is worth pinning in a
+ * test of its own: these entries are written by hand in a YAML patch file, and
+ * a typo that silently mints nothing looks exactly like an empty list.
+ */
+export function mintTrustedAuthorities(entries: readonly string[] | undefined): readonly MintedAuthority[] {
+  if (entries === undefined) return []
+  const minted = new Map<string, MintedAuthority>()
+  for (const entry of entries) {
+    if (typeof entry !== 'string') continue
+    const authority = normalizeAuthorityEntry(entry)
+    if (authority === undefined || authority === '') continue
+    const parsed = parseAuthority(authority)
+    if (parsed === undefined) continue
+    minted.set(authority, {
+      authority,
+      hostname: parsed.hostname.toLowerCase(),
+      // A port-less entry matches any port, the shape the DSH CLI derives for
+      // IP-literal LAN serving; a written port has to match exactly.
+      portless: parsed.port === '',
+    })
+  }
+  return [...minted.values()].sort((left, right) => (left.authority < right.authority ? -1 : 1))
+}
+
+/**
+ * Install the operator's trusted-authority list. Called by the plugin before it
+ * mounts its routes; empty, or never called, leaves the fence exactly as
+ * shipped.
+ */
+export function configureTrustedAuthorities(config: AndroidTrustConfig | undefined): void {
+  trustedAuthorities = mintTrustedAuthorities(config?.trustedAuthorities)
+}
+
+/** Whether a request's authority is one the operator listed. */
+function matchesTrustedAuthority(host: string, hostname: string): boolean {
+  for (const entry of trustedAuthorities) {
+    if (entry.authority === host) return true
+    // Compared by hostname rather than by slicing on ':', which would cut an
+    // IPv6 literal in half.
+    if (entry.portless && entry.hostname === hostname) return true
+  }
+  return false
+}
+
 const KEY_BYTES = 32
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
 const MAX_TOKEN_LENGTH = 16 * 1024
@@ -247,11 +349,10 @@ function isLoopbackHostname(hostname: string): boolean {
   return isIpv4LoopbackAddress(hostname)
 }
 
-function requestAuthority(req: IncomingMessage): URL | undefined {
-  const host = req.headers.host
-  if (typeof host !== 'string') return undefined
+/** Parse a bare `host[:port]` authority, rejecting anything with more in it. */
+function parseAuthority(authority: string): URL | undefined {
   try {
-    const parsed = new URL(`http://${host}`)
+    const parsed = new URL(`http://${authority}`)
     if (parsed.pathname !== '/' || parsed.search !== '' || parsed.hash !== '' || parsed.username !== '' || parsed.password !== '') {
       return undefined
     }
@@ -261,10 +362,22 @@ function requestAuthority(req: IncomingMessage): URL | undefined {
   }
 }
 
-function isLoopbackRequest(req: IncomingMessage): boolean {
+function requestAuthority(req: IncomingMessage): URL | undefined {
+  const host = req.headers.host
+  if (typeof host !== 'string') return undefined
+  return parseAuthority(host)
+}
+
+function isTrustedTransportRequest(req: IncomingMessage): boolean {
+  // Half one is unchanged and not configurable: the peer must be loopback, so a
+  // LAN client on the web port cannot pass however it writes its Host header.
   if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) return false
   const authority = requestAuthority(req)
-  return authority !== undefined && isLoopbackHostname(authority.hostname)
+  if (authority === undefined) return false
+  // Half two: either the Host itself is loopback, or the operator listed the
+  // authority their reverse proxy forwards.
+  if (isLoopbackHostname(authority.hostname)) return true
+  return matchesTrustedAuthority(authority.host.toLowerCase(), authority.hostname.toLowerCase())
 }
 
 function isTrustedBrowserRequest(req: IncomingMessage, requireOrigin: boolean): boolean {
@@ -276,8 +389,14 @@ function isTrustedBrowserRequest(req: IncomingMessage, requireOrigin: boolean): 
   if (authority === undefined) return false
   try {
     const parsed = new URL(origin)
-    return (parsed.protocol === 'http:' || parsed.protocol === 'https:')
-      && parsed.host === authority.host
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+    // Compare hostnames, not `host` (hostname plus the written port): a browser
+    // on port 80/443 sends `Origin: https://host` with no port, while a proxied
+    // Host carries the port the proxy itself listens on — comparing the two whole
+    // authorities then refuses a same-origin request for a reason that has
+    // nothing to do with origin. The hostname is what tells one origin from
+    // another; the port is the transport's business.
+    return parsed.hostname.toLowerCase() === authority.hostname.toLowerCase()
   } catch {
     return false
   }
@@ -285,7 +404,7 @@ function isTrustedBrowserRequest(req: IncomingMessage, requireOrigin: boolean): 
 
 /** The transport fence applied to every dsh-android route. */
 export function isTrustedRequest(req: IncomingMessage, requireOrigin: boolean): boolean {
-  return isLoopbackRequest(req) && isTrustedBrowserRequest(req, requireOrigin)
+  return isTrustedTransportRequest(req) && isTrustedBrowserRequest(req, requireOrigin)
 }
 
 // ── screenshot path containment ──────────────────────────────────────────────

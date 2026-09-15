@@ -50,7 +50,7 @@ try {
 }
 
 const { StreamRoutes, mountStreamRoutes, PLUGIN_ROUTE_PREFIX } = streamRoutes
-const { StreamAccessController, screenshotDir } = streamAccess
+const { StreamAccessController, screenshotDir, configureTrustedAuthorities, mintTrustedAuthorities } = streamAccess
 
 const SIGNING_KEY = Buffer.alloc(32, 7)
 const WRONG_KEY = Buffer.alloc(32, 9)
@@ -325,6 +325,105 @@ step(
     res.status === 403,
     String(res.status),
   )
+}
+
+// ── 3b. the reverse-proxy allowlist ─────────────────────────────────────────
+
+// Every case above runs with the shipped default: no configured authority. The
+// block below turns the allowlist on and off around its own assertions, and
+// puts it back to empty so nothing after it inherits a wider fence.
+const DESTINATION_HOST = 'devices.example.test:8443'
+
+{
+  configureTrustedAuthorities({})
+  const res = await postJson(route('status'), {}, {
+    host: DESTINATION_HOST,
+    origin: `https://${DESTINATION_HOST.split(':')[0]}`,
+  })
+  step(
+    'an unconfigured allowlist refuses a proxied authority (the shipped default)',
+    res.status === 403 && res.json?.code === 'forbidden',
+    `${res.status} ${res.json?.code}`,
+  )
+}
+{
+  // The shape a reverse proxy forwards: a loopback peer (necessarily — this
+  // suite talks to the loopback port) with the deployment's public authority in
+  // Host, and a browser Origin that carries no port because it is the default
+  // one. Without the allowlist this is the 403 the whole feature exists for.
+  configureTrustedAuthorities({ trustedAuthorities: [DESTINATION_HOST] })
+  const res = await postJson(route('status'), {}, {
+    host: DESTINATION_HOST,
+    origin: 'https://devices.example.test',
+  })
+  step(
+    'a configured authority is accepted with a loopback peer (Origin port-normalized)',
+    res.status !== 403,
+    `${res.status} ${res.json?.code ?? 'ok'}`,
+  )
+}
+{
+  configureTrustedAuthorities({ trustedAuthorities: [DESTINATION_HOST] })
+  const res = await postJson(route('status'), {}, {
+    host: 'other.example.test',
+    origin: 'https://other.example.test',
+  })
+  step(
+    'an authority that is NOT on the allowlist is still refused (403)',
+    res.status === 403 && res.json?.code === 'forbidden',
+    `${res.status} ${res.json?.code}`,
+  )
+}
+{
+  // Entries are typed by hand into a YAML patch file, so the accept/reject rule
+  // is worth pinning: a typo that mints nothing is indistinguishable from an
+  // empty list at runtime.
+  const minted = mintTrustedAuthorities([
+    'devices.example.test',
+    'devices.example.test:8443',
+    'devices.example.test',
+    'https://pasted.example.test',
+    'https://pasted.example.test/path',
+    'not a host',
+    '',
+    '   ',
+    'user:secret@host.example.test',
+  ])
+  const authorities = minted.map(entry => entry.authority)
+  step(
+    'the allowlist mints hosts and host:port, de-duplicated, and drops malformed entries',
+    authorities.length === 3
+      && authorities.includes('devices.example.test')
+      && authorities.includes('devices.example.test:8443')
+      && authorities.includes('pasted.example.test')
+      && minted.filter(entry => !entry.portless).length === 1,
+    authorities.join(', '),
+  )
+}
+{
+  // The property that makes the whole design safe: the allowlist can never
+  // bypass the peer-address half. A LAN client cannot be simulated through a
+  // loopback socket, so this asserts the predicate directly.
+  configureTrustedAuthorities({ trustedAuthorities: [DESTINATION_HOST] })
+  const { isTrustedRequest } = streamAccess
+  const fromLan = isTrustedRequest({
+    method: 'POST',
+    url: '/',
+    headers: { host: DESTINATION_HOST, origin: 'https://devices.example.test' },
+    socket: { remoteAddress: '203.0.113.7' },
+  }, true)
+  const fromLoopback = isTrustedRequest({
+    method: 'POST',
+    url: '/',
+    headers: { host: DESTINATION_HOST, origin: 'https://devices.example.test' },
+    socket: { remoteAddress: '127.0.0.1' },
+  }, true)
+  step(
+    'a non-loopback peer is refused even when its authority IS allowlisted',
+    fromLan === false && fromLoopback === true,
+    `peer 203.0.113.7 -> ${fromLan}, peer 127.0.0.1 -> ${fromLoopback}`,
+  )
+  configureTrustedAuthorities({})
 }
 
 // ── 4. method / content-type / body envelope ────────────────────────────────
