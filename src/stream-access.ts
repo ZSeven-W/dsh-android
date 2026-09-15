@@ -68,19 +68,35 @@ type MintedAuthority = { authority: string; origin: string; hostname: string; po
 
 let trustedAuthorities: readonly MintedAuthority[] = []
 
-/** The port written at the end of an authority, if one is written at all. */
-function writtenPort(value: string): string | undefined {
-  // A scheme's colon is not a port separator, so the search starts after it.
-  const scheme = value.indexOf('://')
-  const from = scheme === -1 ? 0 : scheme + 3
-  const separator = value.lastIndexOf(':')
-  if (separator < from) return undefined
+/**
+ * The port written at the end of an AUTHORITY, if one is written at all.
+ *
+ * Takes `host[:port]` with no scheme: the URL parser already knows where the
+ * authority ends, and handing this function a scheme would put a colon in front
+ * of it that is not a port separator — and would defeat the bracket guard below,
+ * since a bracketed IPv6 literal no longer starts the string.
+ */
+function writtenPort(authority: string): string | undefined {
+  const separator = authority.lastIndexOf(':')
+  if (separator === -1) return undefined
   // A bracketed IPv6 literal keeps its colons inside the brackets, so only a
   // colon AFTER the closing bracket can be a port.
-  const bracket = value.indexOf(']')
-  if (value.startsWith('[') && bracket !== -1 && separator < bracket) return undefined
-  const port = value.slice(separator + 1)
+  const bracket = authority.indexOf(']')
+  if (authority.startsWith('[') && bracket !== -1 && separator < bracket) return undefined
+  const port = authority.slice(separator + 1)
   return port === '' ? undefined : port
+}
+
+/** The `host[:port]` part of an entry that carries a scheme. */
+function authorityOfUrl(value: string): string | undefined {
+  const from = value.indexOf('://')
+  if (from === -1) return undefined
+  // A pasted origin has no path, query, hash or userinfo — anything after the
+  // authority is caught by the caller's URL checks, so this only has to cut at
+  // the first character that cannot be part of an authority.
+  const rest = value.slice(from + 3)
+  const end = rest.search(/[/?#]/)
+  return end === -1 ? rest : rest.slice(0, end)
 }
 
 /**
@@ -103,12 +119,18 @@ function normalizeAuthorityEntry(entry: string): MintedAuthority | undefined {
       if (parsed.hostname === '' || parsed.pathname !== '/' || parsed.search !== '' || parsed.hash !== '') return undefined
       // The canonical URL drops a default port, so the written one is read from
       // the input: `https://host:443` means 443, and the operator wrote it.
-      const port = writtenPort(trimmed) ?? parsed.port
+      const port = writtenPort(authorityOfUrl(trimmed) ?? '') ?? parsed.port
       const scheme = parsed.protocol.slice(0, -1)
       // Built from the hostname, not from `parsed.host`: a URL with no port at
       // all would otherwise carry its scheme into the authority.
       const host = parsed.hostname.toLowerCase()
-      const authority = port === '' ? host : `${host}:${port}`
+      if (port === '') {
+        // No port written, so this stands for the host on that scheme's default
+        // port — the same meaning a bare host has, and the reason `https://host`
+        // and `host` behave alike. Writing the scheme records which one.
+        return { authority: host, origin: '', hostname: host, portless: true, authoredScheme: true }
+      }
+      const authority = `${host}:${port}`
       return { authority, origin: `${scheme}://${authority}`, hostname: host, portless: false, authoredScheme: true }
     } catch {
       return undefined
@@ -132,7 +154,12 @@ function normalizeAuthorityEntry(entry: string): MintedAuthority | undefined {
     return { authority: hostname, origin: '', hostname, portless: true, authoredScheme: false }
   }
   const authority = `${hostname}:${port}`
-  return { authority, origin: `http://${authority}`, hostname, portless: false, authoredScheme: false }
+  // A bare `host:port` carries no scheme, so claiming one would refuse the
+  // deployment this feature exists for: the common reverse-proxy setup serves
+  // HTTPS on a non-default port and the operator writes `host:8443`. The entry
+  // therefore stands for that port on EITHER scheme, and the scheme is pinned by
+  // writing it (`https://host:8443`). `origin: ''` is what records that.
+  return { authority, origin: '', hostname, portless: false, authoredScheme: false }
 }
 
 /**
@@ -184,13 +211,17 @@ function trustedEntryForHost(authority: URL): MintedAuthority | undefined {
  * on that host issue state-changing requests to these routes.
  */
 function matchesTrustedOrigin(entry: MintedAuthority, origin: URL): boolean {
-  if (entry.portless) {
-    // A bare host stands for that host on either scheme's DEFAULT port, so the
-    // port has to be the default for the scheme the Origin states.
-    const defaultPort = origin.protocol === 'https:' ? '443' : '80'
-    return (origin.protocol === 'http:' || origin.protocol === 'https:')
-      && origin.hostname.toLowerCase() === entry.hostname
-      && (origin.port === '' || origin.port === defaultPort)
+  if (origin.protocol !== 'http:' && origin.protocol !== 'https:') return false
+  if (entry.origin === '') {
+    // An entry with no scheme of its own: a bare host stands for that host on
+    // either scheme's DEFAULT port, and a bare `host:port` for that port on
+    // either scheme. The port is still compared — an origin is host AND port.
+    if (origin.hostname.toLowerCase() !== entry.hostname) return false
+    const expected = entry.portless
+      ? (origin.protocol === 'https:' ? '443' : '80')
+      : entry.authority.slice(entry.authority.lastIndexOf(':') + 1)
+    const actual = origin.port === '' ? (origin.protocol === 'https:' ? '443' : '80') : origin.port
+    return actual === expected
   }
   // A written scheme pins it. A bare authority carries no scheme, so what it can
   // honestly stand for is `http://` — the scheme the request side parses every
@@ -495,7 +526,13 @@ export function isTrustedRequest(req: IncomingMessage, requireOrigin: boolean): 
   // remote caller; the header checks are only meaningful after it passes.
   if (!isTrustedTransportRequest(req)) return false
   const authority = requestAuthority(req)
-  const entry = authority === undefined ? undefined : trustedEntryForHost(authority)
+  // A loopback Host is the local-browser case and is judged on its own: letting
+  // an allowlist entry (an operator may well list `localhost` for an SSH tunnel)
+  // redirect it into the configured-origin branch would make listing an entry
+  // NARROW the fence, refusing the local panel on its own port.
+  const entry = authority === undefined || isLoopbackHostname(authority.hostname)
+    ? undefined
+    : trustedEntryForHost(authority)
   return isTrustedBrowserRequest(req, requireOrigin, entry)
 }
 

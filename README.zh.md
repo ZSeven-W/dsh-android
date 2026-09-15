@@ -99,13 +99,22 @@ DSH Android 把一台真实的 Android 设备交给 agent，同时把画面交�
   - id: dsh-android
     config:
       trustedAuthorities:
-        # 通用写法：该主机的两种 scheme，各自默认端口（80/443）。
+        # Host 不带端口时：该主机的任意端口、两种 scheme。
         - dsh.example.com
-        # 精确写法：比较 scheme、主机与端口三者。
+        # 8443 端口、两种 scheme —— 反向代理部署的常见写法。
+        - dsh.example.com:8443
+        # 钉死 scheme，只在确实只服务一种协议时这么写。
         - https://dsh.example.com:8443
   ```
 
-  条目可以写成裸 `host`、`host:port`，或直接粘贴的 origin。裸主机代表该主机在两种 scheme 各自默认端口上的形态（80/443），所以一条条目同时适用于 HTTP 与 HTTPS 部署；**写出来的端口一律被尊重**，包括 `:443`，因此 `host:8443` 指的是 `http` 的 8443 端口。又因为来源是 scheme + 主机 + 端口，**同一主机名不同端口**上的另一个应用发来的 `Origin` 会被拒绝：浏览器把它算作 `same-site` 而不是 `cross-site`，围栏里没有别的东西会拦它，而这类请求即使响应读不到、动作本身也已经执行了。
+  | 条目 | 匹配的 `Host` | 接受的 `Origin` |
+  | --- | --- | --- |
+  | `host` | `host` | 该主机在 80 或 443 |
+  | `host:port` | `host:port` | 该端口上的 `http` 或 `https` |
+  | `https://host` | `host` | 该主机在 443 |
+  | `https://host:port` | `host:port` | 仅该端口上的 `https` |
+
+  **端口始终参与比较**，因为来源就是 scheme + 主机 + 端口：同一主机名、不同端口上的另一个应用发来的 `Origin` 会被拒绝 —— 浏览器把它算作 `same-site` 而不是 `cross-site`，围栏里没有别的东西会拦它，而这类请求即使响应读不到、动作本身也已经执行了。列条目也不会让判定变窄：回环 `Host` 独立判定，所以为 SSH 隧道加一条 `localhost` 不会把本机面板弄坏。
 
   对端地址那一半**不可配置**：局域网上直接访问 web 端口的客户端，无论怎么写 Host 头都会被拒；伪造的 `X-Forwarded-Host` 也无法凭空造出白名单上没有的条目。把一个权威列进来，等于声明"以这个名义到达的请求已经通过了本部署前面的认证" —— 在反向代理场景下，这个判断只有运维者能做。默认为空，也就是出厂行为。
 - **HMAC-SHA256 capability，10 分钟内过期**，格式为 `base64url(payload).base64url(mac)`，用每个 DSH home 一把的 32 字节密钥签名（`<DSH_HOME>/cache/dsh-android/stream-access.key`，权限 0600，原子创建）。为某台设备签发的 capability 在另一台设备接管流位的瞬间即失效；截图 capability 也无法重放到流路由上。

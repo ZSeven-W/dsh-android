@@ -365,6 +365,31 @@ const DESTINATION_ORIGIN_ENTRY = 'https://devices.example.test:8443'
   )
 }
 {
+  // The second-most-natural spelling: an operator writes the authority they see
+  // in the browser bar plus the port the proxy listens on, and the deployment
+  // serves HTTPS. A bare `host:port` carries no scheme, so it must stand for
+  // that port on either one — otherwise the entry silently does nothing in
+  // exactly the deployment this feature exists for.
+  configureTrustedAuthorities({ trustedAuthorities: [DESTINATION_HOST] })
+  const httpsOrigin = await postJson(route('status'), {}, {
+    host: DESTINATION_HOST,
+    origin: `https://devices.example.test:8443`,
+  })
+  const httpOrigin = await postJson(route('status'), {}, {
+    host: DESTINATION_HOST,
+    origin: `http://devices.example.test:8443`,
+  })
+  const wrongPort = await postJson(route('status'), {}, {
+    host: DESTINATION_HOST,
+    origin: 'https://devices.example.test:9443',
+  })
+  step(
+    'a bare host:port entry serves either scheme on that port, and only that port',
+    httpsOrigin.status !== 403 && httpOrigin.status !== 403 && wrongPort.status === 403,
+    `https ${httpsOrigin.status}, http ${httpOrigin.status}, wrong port ${wrongPort.status}`,
+  )
+}
+{
   // The security half of that: an origin is host AND port, so another
   // application on the same hostname must not be able to drive these routes.
   // Browsers call that same-site rather than cross-site, so nothing else in the
@@ -419,21 +444,62 @@ const DESTINATION_ORIGIN_ENTRY = 'https://devices.example.test:8443'
       && authorities.includes('devices.example.test')
       && authorities.includes('devices.example.test:8443')
       && authorities.includes('pasted.example.test')
-      && byAuthority.get('pasted.example.test')?.origin === 'https://pasted.example.test',
+      // A pasted origin with no port is a portless entry too — "no port written"
+      // has one meaning now — while the scheme it recorded is kept.
+      && byAuthority.get('pasted.example.test')?.portless === true
+      && byAuthority.get('pasted.example.test')?.authoredScheme === true,
     authorities.join(', '),
   )
   step(
     'a bare host takes either scheme on its default port, and a written port pins the origin',
     byAuthority.get('devices.example.test')?.portless === true
-      && byAuthority.get('devices.example.test:8443')?.origin === 'http://devices.example.test:8443'
+      // A bare `host:port` carries no scheme, so it records none: it stands for
+      // that port on either scheme, which is what an HTTPS reverse proxy needs.
+      && byAuthority.get('devices.example.test:8443')?.origin === ''
       && byAuthority.get('devices.example.test:8443')?.portless === false,
-    `bare -> ${byAuthority.get('devices.example.test')?.origin || '(either scheme:80/443)'}, :8443 -> ${byAuthority.get('devices.example.test:8443')?.origin}`,
+    `bare -> ${byAuthority.get('devices.example.test')?.origin || '(either scheme:80/443)'}, :8443 -> ${byAuthority.get('devices.example.test:8443')?.origin || '(either scheme:8443)'}`,
   )
   step(
     'an explicitly written default port survives URL canonicalization',
     mintTrustedAuthorities(['https://pasted.example.test:443'])[0]?.origin === 'https://pasted.example.test:443'
       && mintTrustedAuthorities(['pasted.example.test:443'])[0]?.authority === 'pasted.example.test:443',
     `https://…:443 -> ${mintTrustedAuthorities(['https://pasted.example.test:443'])[0]?.origin}`,
+  )
+  step(
+    'a bracketed IPv6 authority survives whether or not it carries a scheme',
+    mintTrustedAuthorities(['[::1]:3080'])[0]?.authority === '[::1]:3080'
+      && mintTrustedAuthorities(['http://[::1]:3080'])[0]?.authority === '[::1]:3080'
+      // No port written is a portless entry, not a bogus `[::1]:1]`.
+      && mintTrustedAuthorities(['http://[::1]'])[0]?.authority === '[::1]'
+      // "No port written" means the same thing with or without a scheme.
+      && mintTrustedAuthorities(['http://[::1]'])[0]?.portless === true
+      && mintTrustedAuthorities(['[::1]'])[0]?.authority === '[::1]'
+      && mintTrustedAuthorities(['[::1]'])[0]?.portless === true
+      && mintTrustedAuthorities(['[::1]:3080'])[0]?.portless === false,
+    `[::1]:3080 -> ${mintTrustedAuthorities(['[::1]:3080'])[0]?.authority}, http://[::1] -> ${mintTrustedAuthorities(['http://[::1]'])[0]?.authority}`,
+  )
+}
+{
+  // Regression guard for the discriminator: an operator may legitimately list a
+  // loopback authority (an SSH tunnel does), and doing so must not redirect the
+  // LOCAL path into the configured-origin branch, which only knows default ports
+  // and would refuse the panel on its own port.
+  const { port } = mini.server.address()
+  configureTrustedAuthorities({ trustedAuthorities: [`localhost:${port}`] })
+  const listed = await postJson(route('status'), {}, {
+    host: `localhost:${port}`,
+    origin: `http://localhost:${port}`,
+  })
+  configureTrustedAuthorities({ trustedAuthorities: ['localhost'] })
+  const listedBare = await postJson(route('status'), {}, {
+    host: `localhost:${port}`,
+    origin: `http://localhost:${port}`,
+  })
+  configureTrustedAuthorities({})
+  step(
+    'listing a loopback authority does not narrow the local path (port included and bare)',
+    listed.status !== 403 && listedBare.status !== 403,
+    `listed :${port} -> ${listed.status}, listed bare -> ${listedBare.status}`,
   )
 }
 {

@@ -99,13 +99,24 @@ Coordinates are **normalized 0..1 of the streamed frame** everywhere. The frame 
   - id: dsh-android
     config:
       trustedAuthorities:
-        # Portable: that host, either scheme, on the scheme's default port.
+        # Any port on that host, either scheme, when the Host carries no port.
         - dsh.example.com
-        # Pinned: this exact origin, compared scheme, host AND port.
+        # Port 8443 on either scheme — the reverse-proxy spelling.
+        - dsh.example.com:8443
+        # Pinned to one scheme, which is what you want when only one is served.
         - https://dsh.example.com:8443
   ```
 
-  An entry may be a bare `host`, a `host:port`, or a pasted origin. A bare host stands for either scheme on that scheme's default port (80/443), which is what makes one entry work for both an HTTP and an HTTPS deployment; a port that is written — including `:443` — is honoured, so `host:8443` means port 8443 on `http`. Because an origin is scheme + host + port, an `Origin` from another application on the same hostname but a different port is refused: browsers classify that as `same-site` rather than `cross-site`, so nothing else in the fence would stop it, and the request would still execute even though its response is unreadable.
+  An entry may be a bare `host`, a `host:port`, or a pasted origin, and what it covers is decided by what it says:
+
+  | Entry | Matches | `Origin` accepted |
+  | --- | --- | --- |
+  | `host` | `Host: host` | that host on 80 or 443 |
+  | `host:port` | `Host: host:port` | that port on `http` or `https` |
+  | `https://host` | `Host: host` | that host on 443 |
+  | `https://host:port` | `Host: host:port` | `https` on that port only |
+
+  The port is always compared, because an origin is scheme + host + port: an `Origin` from another application on the same hostname but a different port is refused. Browsers classify that as `same-site` rather than `cross-site`, so nothing else in the fence would stop it, and the request would still execute even though its response is unreadable to that origin. Listing an authority never narrows anything either — a loopback `Host` is judged on its own, so adding `localhost` for an SSH tunnel cannot break the local panel.
 
   The peer-address half is NOT configurable, so a client on the LAN that reaches the web port directly is refused however it writes its Host header, and a forged `X-Forwarded-Host` cannot invent an entry that is not on the list. Listing an authority states that requests arriving under that name have passed whatever authentication the deployment put in front of it — behind a proxy that is a decision only the operator can make. The default is empty, which is exactly the shipped behaviour.
 - **HMAC-SHA256 capabilities expiring within 10 minutes**, formatted `base64url(payload).base64url(mac)` and signed with a 32-byte per-DSH-home key (`<DSH_HOME>/cache/dsh-android/stream-access.key`, mode 0600, created atomically). A capability minted for one device stops working the moment another device takes the stream slot, and a screenshot capability cannot be replayed against the stream route.
