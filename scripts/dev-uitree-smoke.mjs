@@ -42,6 +42,7 @@ import {
   createStepReporter,
   expectThrow,
   findJsonViolations,
+  libUrl,
   makeExec,
 } from './_smoke-harness.mjs'
 
@@ -182,12 +183,12 @@ const { step, finish } = createStepReporter()
 let lib
 try {
   const [uitree, listRows, toolUitree, toolRows, toolOcr, ocrBackend] = await Promise.all([
-    import(join(root, 'lib', 'uitree.js')),
-    import(join(root, 'lib', 'list-rows.js')),
-    import(join(root, 'lib', 'tool-uitree.js')),
-    import(join(root, 'lib', 'tool-list-rows.js')),
-    import(join(root, 'lib', 'tool-ocr.js')),
-    import(join(root, 'lib', 'ocr-backend.js')),
+    import(libUrl(root, 'uitree.js')),
+    import(libUrl(root, 'list-rows.js')),
+    import(libUrl(root, 'tool-uitree.js')),
+    import(libUrl(root, 'tool-list-rows.js')),
+    import(libUrl(root, 'tool-ocr.js')),
+    import(libUrl(root, 'ocr-backend.js')),
   ])
   lib = { uitree, listRows, toolUitree, toolRows, toolOcr, ocrBackend }
 } catch (error) {
@@ -860,8 +861,17 @@ if (lib !== undefined) {
       const legacy = resolveOcrBinary()
       step(
         'the legacy DSH_ANDROID_SWIFTC name still drives resolution',
-        legacy.available === false && String(legacy.reason).includes('/nonexistent/swiftc-does-not-exist'),
-        String(legacy.reason).slice(0, 90),
+        // swiftc only exists on macOS, so off-darwin the resolver bails on the
+        // PLATFORM before it ever looks at the override. Asserting the path here
+        // would fail for a reason that has nothing to do with the rename, which
+        // is why this was the one red step on Windows. SKIP is the honest
+        // verdict when the platform makes the question unaskable.
+        process.platform === 'darwin'
+          ? legacy.available === false && String(legacy.reason).includes('/nonexistent/swiftc-does-not-exist')
+          : 'SKIP',
+        process.platform === 'darwin'
+          ? String(legacy.reason).slice(0, 90)
+          : 'swiftc is macOS-only; this host runs ' + process.platform,
       )
     } finally {
       if (priorOld === undefined) delete process.env.DSH_ANDROID_SWIFTC
