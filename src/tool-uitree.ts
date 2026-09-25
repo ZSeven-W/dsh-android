@@ -94,6 +94,21 @@ export interface AndroidToolHost {
   resolveTarget(serial?: string): Promise<AndroidDevice>
   /** Tap at normalized 0..1 coordinates of the current frame. */
   tap(serial: string, x: number, y: number): Promise<void>
+  /**
+   * Tap at pixels of the input space. The tool a tree node came from uses THIS
+   * one: a tree coordinate is already an input coordinate, and only the
+   * normalize/multiply round trip needed two sizes to agree.
+   */
+  tapPixels(serial: string, x: number, y: number): Promise<void>
+  /**
+   * The display space `input` addresses. Tree pixels live in the app frame,
+   * which differs from this by the system-bar inset (measured 1500 vs 1536),
+   * so a tap must normalize against THIS space rather than the tree height.
+   * `android_ui_tree` reports it as `screen`, so a caller normalizing node
+   * bounds by hand divides by the same thing the tap path uses.
+   */
+  inputSpace(serial: string, options?: { rotation?: number }): Promise<{ width: number; height: number }>
+
   /** Capture a fresh PNG, independent of the stream loop. */
   screenshot(serial: string): Promise<{ png: Buffer; width?: number; height?: number }>
 }
@@ -505,9 +520,9 @@ export interface AndroidTapElementResult {
     resourceId?: string
     bounds: UiBounds
   }
-  /** Tapped point in display pixels. */
+  /** The tapped node's centre, in the input space's pixels. */
   center: { x: number; y: number }
-  /** The normalized 0..1 coordinates actually sent to the device. */
+  /** The pixel coordinates actually sent to `input tap`. */
   tap: { x: number; y: number }
   /** Outcome assertion (expect_text/expect_gone), when requested. */
   expected?: OcrExpectationResult
@@ -640,7 +655,22 @@ export function createAndroidUiTools(host: AndroidToolHost, options: AndroidUiTo
         additionalProperties: false,
         properties: {
           device: { ...deviceSchema, required: true },
-          screen: { ...sizeSchema, required: true },
+          // Named explicitly, because the value it holds is the INPUT space and
+          // not the tree's own frame: on a device whose system bars inset the
+          // display the two differ (2560x1500 app frame inside a 2560x1536
+          // panel), and normalizing node bounds by the wrong one taps up to
+          // 35 px low. Description, not just behaviour, is where that trap was
+          // set: this field used to say "the display size in pixels" while
+          // returning the app frame.
+          screen: {
+            ...sizeSchema,
+            required: true,
+            description: 'The INPUT space in pixels — the coordinate space a tap is '
+              + 'normalized against, and the one to divide node bounds by when computing '
+              + 'a normalized coordinate yourself. This is NOT necessarily the app frame: '
+              + 'when a system bar insets the display the input space is taller (measured '
+              + '2560x1536 against an app frame of 2560x1500).',
+          },
           nodeCount: { type: 'integer', required: true },
           truncated: { type: 'boolean' },
           hint: { type: 'string' },
@@ -654,12 +684,29 @@ export function createAndroidUiTools(host: AndroidToolHost, options: AndroidUiTo
     async execute(args: { serial?: string; max_depth?: number; filter?: string }) {
       const device = await host.resolveTarget(args.serial)
       let roots: UiTreeNode[]
+      let treeRotation: number | undefined
       try {
-        roots = (await readUiTree(host.toolchain, device.serial)).roots
+        const parsed = await readUiTree(host.toolchain, device.serial)
+        roots = parsed.roots
+        treeRotation = parsed.rotation
       } catch (error) {
         throw new Error(`android_ui_tree: ${errorMessage(error)}`)
       }
-      return buildTreeResult(roots, screenBoundsOf(roots), deviceSummaryOf(device), args)
+      // Report the INPUT space, not the tree's app frame.
+      //
+      // These differ whenever a system bar insets the display (measured: a
+      // 2560x1536 panel whose app frame is 2560x1500). Returning the app frame
+      // here while calling it "the display size in pixels" re-created the exact
+      // drift the tap tools were fixed for: an agent that normalizes node
+      // bounds by `screen` and taps through android_interact lands up to 35 px
+      // low, because the tap path multiplies by this same value. Naming one
+      // space and using another is the whole bug class, so both halves now read
+      // from the one source the tap path uses.
+      const input = await host.inputSpace(
+        device.serial,
+        treeRotation === undefined ? {} : { rotation: treeRotation },
+      ).catch(() => screenBoundsOf(roots))
+      return buildTreeResult(roots, input, deviceSummaryOf(device), args)
     },
     presentCall: (args: { serial?: string }) => ({
       card: 'generic',
@@ -763,6 +810,8 @@ export function createAndroidUiTools(host: AndroidToolHost, options: AndroidUiTo
       const device = await host.resolveTarget(args.serial)
       let roots: UiTreeNode[]
       try {
+        // No rotation is read any more: the tap no longer normalizes, so there
+        // is no axis to swap. `screen` below is only a zero-size guard.
         roots = (await readUiTree(host.toolchain, device.serial)).roots
       } catch (error) {
         throw new Error(`android_tap_element: ${errorMessage(error)}`)
@@ -779,11 +828,20 @@ export function createAndroidUiTools(host: AndroidToolHost, options: AndroidUiTo
         )
       }
       const center = boundsCenter(node.bounds)
-      // Pixel center → normalized 0..1 of the SAME display space the stream
-      // and `input tap` share (docs/contract.zh.md: no rotation inverse).
-      const tap = { x: round4(center.x / screen.width), y: round4(center.y / screen.height) }
+      // Send the node's own pixel straight to `input tap`.
+      //
+      // A tree coordinate IS an input coordinate, so normalize-and-multiply-
+      // back is a round trip that can only lose. It used to lose exactly the
+      // system-bar inset: the dump reports the APP frame (2560x1500) while
+      // `input` addresses the FULL display (2560x1536), so a target at y=1472
+      // normalized to 0.9813 and tapped at 1507 — past the app frame, inside
+      // the gesture strip, swallowed. Keeping both halves on the same space
+      // fixed that, but it needed `#pixels` to rotate as well, which it did
+      // not; with no stream running a landscape tree reached it with swapped
+      // axes. A pixel has no second half to disagree with.
+      const tap = { x: round4(center.x), y: round4(center.y) }
       try {
-        await host.tap(device.serial, tap.x, tap.y)
+        await host.tapPixels(device.serial, tap.x, tap.y)
       } catch (error) {
         throw new Error(`android_tap_element: the tap at (${center.x}, ${center.y}) px failed: ${errorMessage(error)}`)
       }

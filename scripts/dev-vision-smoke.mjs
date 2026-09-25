@@ -18,15 +18,15 @@
 
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createStepReporter, findJsonViolations, makeExec, TINY_PNG_B64 } from './_smoke-harness.mjs'
+import { createStepReporter, findJsonViolations, libUrl, makeExec, TINY_PNG_B64 } from './_smoke-harness.mjs'
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), '..')
 const { step, finish } = createStepReporter()
 
 let vision, tools
 try {
-  vision = await import(join(root, 'lib', 'vision.js'))
-  tools = await import(join(root, 'lib', 'tools.js'))
+  vision = await import(libUrl(root, 'vision.js'))
+  tools = await import(libUrl(root, 'tools.js'))
 } catch (error) {
   console.log(`SKIP lib/ is not built (${error.message.split('\n')[0]}); run pnpm run build first`)
   process.exit(0)

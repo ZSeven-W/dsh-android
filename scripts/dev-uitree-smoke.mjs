@@ -42,6 +42,7 @@ import {
   createStepReporter,
   expectThrow,
   findJsonViolations,
+  libUrl,
   makeExec,
 } from './_smoke-harness.mjs'
 
@@ -140,6 +141,37 @@ const SYNTHETIC = [
   '</node></hierarchy>',
 ].join('')
 
+/**
+ * The regression fixture for the tap-denominator bug (issue: taps land low by
+ * up to 35 px near the bottom edge).
+ *
+ * Everything else in this file uses tree === display, which is precisely why
+ * the bug survived: when the two sizes are equal, dividing by the tree's frame
+ * and multiplying by the live frame cancel out. This fixture makes them DIFFER
+ * the way a real device does — a 2560x1536 display whose app frame is 2560x1500
+ * because the 36 px navigation bar insets it.
+ *
+ * The console's centre sits at y=1472, chosen because it is the exact row from
+ * the report: dividing by 1500 yields 0.9813 (taps at 1507 — past the app frame
+ * and into the gesture strip, so the touch is swallowed), while dividing by the
+ * input space 1536 yields 0.9583 (taps at 1472, i.e. the target).
+ */
+const DIFFERING_FRAME = [
+  '<?xml version=\'1.0\' encoding=\'UTF-8\' standalone=\'yes\' ?>',
+  '<hierarchy rotation="0">',
+  '<node index="0" text="" resource-id="" class="android.widget.FrameLayout" package="demo.app"',
+  ' content-desc="" checkable="false" checked="false" clickable="false" enabled="true"',
+  ' focusable="false" focused="false" scrollable="false" long-clickable="false"',
+  ' password="false" selected="false" bounds="[0,0][2560,1500]">',
+  // Centred at y=1472 inside a 1500-tall app frame: 28 px from the bottom edge,
+  // i.e. inside the region the 1.024 scale pushes OFF the usable area.
+  '<node index="0" text="Console" resource-id="demo.app:id/console" class="android.widget.Button"',
+  ' package="demo.app" content-desc="" checkable="false" checked="false" clickable="true"',
+  ' enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false"',
+  ' password="false" selected="false" bounds="[1100,1400][1460,1544]" />',
+  '</node></hierarchy>',
+].join('')
+
 /** A three-item feed whose rows carry counters, for the row heuristics. */
 function feedFixture({ offscreenRows = 0 } = {}) {
   const row = (index, label, top) => [
@@ -182,12 +214,12 @@ const { step, finish } = createStepReporter()
 let lib
 try {
   const [uitree, listRows, toolUitree, toolRows, toolOcr, ocrBackend] = await Promise.all([
-    import(join(root, 'lib', 'uitree.js')),
-    import(join(root, 'lib', 'list-rows.js')),
-    import(join(root, 'lib', 'tool-uitree.js')),
-    import(join(root, 'lib', 'tool-list-rows.js')),
-    import(join(root, 'lib', 'tool-ocr.js')),
-    import(join(root, 'lib', 'ocr-backend.js')),
+    import(libUrl(root, 'uitree.js')),
+    import(libUrl(root, 'list-rows.js')),
+    import(libUrl(root, 'tool-uitree.js')),
+    import(libUrl(root, 'tool-list-rows.js')),
+    import(libUrl(root, 'tool-ocr.js')),
+    import(libUrl(root, 'ocr-backend.js')),
   ])
   lib = { uitree, listRows, toolUitree, toolRows, toolOcr, ocrBackend }
 } catch (error) {
@@ -525,12 +557,33 @@ if (lib !== undefined) {
     product: 'sdk_gphone64_arm64',
   }
 
-  function makeFakeHost(xml) {
+  /**
+   * A fake host.
+   *
+   * `inputSpace` MUST be present. The tap tools resolve their denominator from
+   * it, so a host without one throws `host.inputSpace is not a function` at the
+   * first tap — which is exactly what this suite did on the PR branch, and why
+   * the run stopped at 78 steps.
+   *
+   * `input` defaults to the display the fixture itself describes, so every
+   * pre-existing tap assertion keeps its meaning: those fixtures use
+   * tree === display, and the whole point of `inputSpace` is that the two can
+   * differ. Pass an explicit value to exercise the case where they do.
+   */
+  function makeFakeHost(xml, input = null) {
     const taps = []
     const dumps = []
+    const inputSpaces = []
+    // Default to 1080x2400: this fixture's whole premise is tree === display,
+    // which is exactly why it cannot tell the two denominators apart today
+    // (the panel is 2400; only the ROOT bounds stop at 2337). An explicit
+    // `input` is how a case that DOES differ gets written.
+    const inputSize = input ?? { width: 1080, height: 2400 }
     return {
       taps,
       dumps,
+      inputSpaces,
+      inputSize,
       host: {
         toolchain: {
           async execOut(serial, command) {
@@ -549,8 +602,21 @@ if (lib !== undefined) {
           if (serial !== undefined && serial !== FAKE_DEVICE.serial) throw new Error(`unknown serial ${serial}`)
           return FAKE_DEVICE
         },
+        async inputSpace(serial, options) {
+          if (serial !== undefined && serial !== FAKE_DEVICE.serial) throw new Error(`unknown serial ${serial}`)
+          // Recorded so a test can assert the TREE's rotation reaches the
+          // resolver. Without it a landscape dump is normalized against an
+          // unrotated panel and the axes silently swap.
+          inputSpaces.push({ serial, options })
+          return inputSize
+        },
         async tap(serial, x, y) {
           taps.push({ serial, x, y })
+        },
+        // The tree tools tap through THIS one: a tree pixel is already an input
+        // pixel, so there is no normalization step for a fake to emulate.
+        async tapPixels(serial, x, y) {
+          taps.push({ serial, x, y, pixels: true })
         },
         async screenshot() {
           return { png: Buffer.from(TINY_PNG_B64, 'base64'), width: 1, height: 1 }
@@ -618,12 +684,15 @@ if (lib !== undefined) {
     }
 
     const tapped = await tools.androidTapElement.execute({ label: 'Battery' }, makeExec('android_tap_element', {}))
+    // The node's own centre, in pixels. It used to be normalized 0..1 and
+    // multiplied back by the host; sending the pixel removes the second size
+    // that could disagree with the first.
     const expectedTap = {
-      x: Math.round((tapped.element.bounds.x + tapped.element.bounds.w / 2)) / 1080,
-      y: Math.round((tapped.element.bounds.y + tapped.element.bounds.h / 2)) / 2400,
+      x: Math.round(tapped.element.bounds.x + tapped.element.bounds.w / 2),
+      y: Math.round(tapped.element.bounds.y + tapped.element.bounds.h / 2),
     }
     step(
-      'android_tap_element taps the node center as normalized 0..1',
+      'android_tap_element taps the node center in input-space pixels',
       fake.taps.length === 1
         && fake.taps[0].serial === 'emulator-5554'
         && Math.abs(fake.taps[0].x - expectedTap.x) < 1e-4
@@ -689,7 +758,10 @@ if (lib !== undefined) {
         && tapped.row.index === 1
         && tapped.inRow.x === 0.9 && tapped.inRow.y === 0.5
         && tapped.center.x === Math.round(rows.rows[1].frame.x + 0.9 * rows.rows[1].frame.w)
-        && Math.abs(fake.taps.at(-1).x - tapped.center.x / 1080) < 1e-4
+        // Sent as the pixel itself: a row-relative fraction resolves to tree
+        // pixels, and a tree pixel is an input pixel.
+        && fake.taps.at(-1).x === tapped.center.x
+        && fake.taps.at(-1).y === tapped.center.y
         && /No expect_count was given/.test(tapped.note ?? ''),
       `${JSON.stringify(tapped.center)} → ${JSON.stringify(fake.taps.at(-1))}`,
     )
@@ -738,6 +810,71 @@ if (lib !== undefined) {
         && /not a scrollable list/.test(rows.hint ?? '')
         && !/no accessibility information/.test(rows.hint ?? ''),
       rows.hint?.slice(0, 90),
+    )
+  }
+
+  // ── E2. the two denominators must not be confused ─────────────────────────
+  //
+  // A normal tap normalizes a pixel by the TREE's screen and the host then
+  // multiplies it back by the INPUT space. When those differ (an app frame
+  // insets the display) using the wrong one halves the error in each direction
+  // and the round trip still looks self-consistent -- which is why every other
+  // case here, built on tree === display, was blind to it.
+  //
+  // Spec, taken from the report: input 2560x1536, root [0,0][2560,1500],
+  // target centred at y=1472 -> tap.y must be 1472/1536 = 0.9583.
+  // Dividing by the app frame instead gives 1472/1500 = 0.9813, i.e. a tap at
+  // 0.9813*1536 = 1507, past the app frame and inside the gesture strip.
+  {
+    const fake = makeFakeHost(extractHierarchyXml(DIFFERING_FRAME), { width: 2560, height: 1536 })
+    const tools = createAndroidUiTools(fake.host, { cacheDir: scratch })
+
+    const tapped = await tools.androidTapElement.execute({ label: 'Console' }, makeExec('android_tap_element', {}))
+    const expected = 1472          // the node's own centre pixel
+    const wrongScale = 1507        // 1472 / 1500 * 1536: what the app-frame
+                                   // denominator produced, i.e. 35 px low and
+                                   // past the app frame
+    step(
+      'a tap on a differing app frame lands on the node, not 35 px below it',
+      fake.taps.length === 1
+        && Math.abs(fake.taps[0].y - expected) < 1e-4
+        && Math.abs(fake.taps[0].y - wrongScale) > 20,
+      `tap.y=${fake.taps[0]?.y} (node centre ${expected}; the old denominator gave ${wrongScale})`,
+    )
+    // android_ui_tree must report the space a tap will actually use. It used to
+    // return the app frame while describing it as "the display size in pixels",
+    // so an agent that normalized node bounds by `screen` and tapped through
+    // android_interact reproduced the very drift this fixture pins down.
+    const tree = await tools.androidUiTree.execute({}, makeExec('android_ui_tree', {}))
+    step(
+      'android_ui_tree reports the INPUT space, not the tree frame, in `screen`',
+      tree.screen.width === 2560 && tree.screen.height === 1536,
+      `screen=${tree.screen.width}x${tree.screen.height}`,
+    )
+    // The dump's rotation must reach the resolver. A fixture declaring
+    // rotation="1" against a natural 1080x2400 panel is the landscape case
+    // where an unrotated answer swaps the axes.
+    const landscapeFake = makeFakeHost(
+      extractHierarchyXml(DIFFERING_FRAME).replace('rotation="0"', 'rotation="1"'),
+      { width: 1536, height: 2560 },
+    )
+    const landscapeTools = createAndroidUiTools(landscapeFake.host, { cacheDir: scratch })
+    // android_ui_tree is the reader that still resolves the space (the tap
+    // tools no longer need to: they send the pixel), so this is where the
+    // rotation has to arrive.
+    await landscapeTools.androidUiTree.execute({}, makeExec('android_ui_tree', {}))
+    step(
+      "the tree's rotation is passed to inputSpace (landscape dumps do not swap axes)",
+      landscapeFake.inputSpaces.length === 1 && landscapeFake.inputSpaces[0].options?.rotation === 1,
+      JSON.stringify(landscapeFake.inputSpaces[0]?.options ?? null),
+    )
+    // And a tap must NOT pay for a space it does not use any more.
+    landscapeFake.inputSpaces.length = 0
+    await landscapeTools.androidTapElement.execute({ label: 'Console' }, makeExec('android_tap_element', {}))
+    step(
+      'a tap no longer resolves the input space at all (the pixel is sent directly)',
+      landscapeFake.inputSpaces.length === 0 && landscapeFake.taps.at(-1)?.y === 1472,
+      `inputSpace calls=${landscapeFake.inputSpaces.length} tap.y=${landscapeFake.taps.at(-1)?.y}`,
     )
   }
 
@@ -858,10 +995,19 @@ if (lib !== undefined) {
       delete process.env.DSHPLUGIN_ANDROID_SWIFTC
       process.env.DSH_ANDROID_SWIFTC = '/nonexistent/swiftc-does-not-exist'
       const legacy = resolveOcrBinary()
+      // swiftc only exists on macOS, so off-darwin the resolver bails on the
+      // PLATFORM before it ever looks at the override. Asserting the path here
+      // would fail for a reason that has nothing to do with the rename, which
+      // is why this was the one red step on Windows ci. SKIP is the honest
+      // verdict when the platform makes the question unaskable.
       step(
         'the legacy DSH_ANDROID_SWIFTC name still drives resolution',
-        legacy.available === false && String(legacy.reason).includes('/nonexistent/swiftc-does-not-exist'),
-        String(legacy.reason).slice(0, 90),
+        process.platform === 'darwin'
+          ? legacy.available === false && String(legacy.reason).includes('/nonexistent/swiftc-does-not-exist')
+          : 'SKIP',
+        process.platform === 'darwin'
+          ? String(legacy.reason).slice(0, 90)
+          : `swiftc is macOS-only; this host runs ${process.platform}`,
       )
     } finally {
       if (priorOld === undefined) delete process.env.DSH_ANDROID_SWIFTC

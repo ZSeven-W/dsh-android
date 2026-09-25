@@ -22,7 +22,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createStepReporter, expectThrow, TINY_PNG_B64 } from './_smoke-harness.mjs'
+import { createStepReporter, expectThrow, libUrl, TINY_PNG_B64 } from './_smoke-harness.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -30,7 +30,7 @@ const { step, finish } = createStepReporter()
 
 let driver
 try {
-  driver = await import(join(root, 'lib', 'qa-driver.js'))
+  driver = await import(libUrl(root, 'qa-driver.js'))
 } catch (error) {
   step('import lib/qa-driver.js', 'SKIP', 'build not available yet: ' + (error instanceof Error ? error.message : String(error)))
   console.log('SKIPPED — run pnpm run build (or re-run after integration) and try again.')

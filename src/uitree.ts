@@ -488,6 +488,36 @@ export function screenBoundsOf(roots: readonly UiTreeNode[]): { width: number; h
   return { width, height }
 }
 
+/** The display space the `input` command actually addresses. */
+export interface InputSpace {
+  /** The display size `input` uses (full display, orientation-aware). */
+  width: number
+  height: number
+}
+
+/**
+ * A pixel from a UI-tree node -> normalized 0..1 of the `input` space.
+ *
+ * The two spaces this bridges share an ORIGIN and a scale but not an EXTENT:
+ * `uiautomator dump` reports the APP frame (measured 2560x1500 on a
+ * 2560x1536 device) while `input` and the stream share the FULL display. So the
+ * pixel itself must NOT be rescaled -- only the denominator has to be the space
+ * `input` will be interpreted in.
+ *
+ * Verified on a real device: a tap sent at the tree's own pixel lands
+ * correctly, which is what makes "no translation" the right rule here.
+ */
+export function treePixelToInput(
+  pixel: { x: number; y: number },
+  input: InputSpace,
+  round: (value: number) => number,
+): { x: number; y: number } {
+  return {
+    x: round(pixel.x / input.width),
+    y: round(pixel.y / input.height),
+  }
+}
+
 /**
  * True when `bounds` lies ENTIRELY outside the screen. uiautomator keeps
  * scrolled-out rows in the dump with their real (off-screen) coordinates and
