@@ -93,6 +93,7 @@ DSH Android 把一台真實的 Android 裝置交給智慧代理，同時把畫�
 
 - **瀏覽器從不與 adb 通訊，而且根本不存在可通訊的內部連接埠。** 串流在本處理程序內產生、直接自記憶體送出；每一個位元組都經由 DSH webserver 源站上外掛程式自有的 `/_dsh/dsh-android/*` 路由：`/stream/<token>`（即時 multipart PNG）、`/screenshot/<token>`（快取 PNG），以及 `/grant`、`/switch-device`、`/devices`、`/capture`、`/status`、`/control` 與 `/device-action`。這比「代理一台回送串流伺服器」的攻擊面嚴格更小。
 - **三重回送圍欄，在讀取任何能力憑證之前套用。** 傳輸層對端必須是回送位址，`Host` 標頭必須指向回送權威（因此 DNS 重綁定的 `Host` 會被拒絕），Fetch-Metadata/`Origin` 必須同源。Host 與 Origin 都是呼叫方可控的資料，絕不單獨採信。
+- 反向代理設定：trustedAuthorities 必須是字串陣列，僅能用在會對所有外掛路由執行身分驗證的代理後面。Host 和 Origin 可被 API 用戶端偽造，Origin 不是身分驗證；對端仍須為 loopback。預設空清單拒絕公開主機。端口按數值正規化，明確指定的協定與端口限定瀏覽器 Origin。
 - **HMAC-SHA256 能力憑證，10 分鐘內過期**，格式為 `base64url(payload).base64url(mac)`，以每個 DSH 主目錄專屬的 32 位元組金鑰簽章（`<DSH_HOME>/cache/dsh-android/stream-access.key`，權限 0600，原子建立）。為某台裝置簽發的憑證，在另一台裝置接手串流位置的瞬間即失效；螢幕擷取的憑證也無法重放到串流路由上。
 - **螢幕擷取路由只提供唯一一個目錄。** 路徑以 `lstat` 逐級走查（任何符號連結一律拒絕），再以 `realpath` 收尾做包含性驗證，用 `O_NOFOLLOW` 開啟、限制大小，並在讀取後**再驗證一次**——因此在簽發與取用之間被換成符號連結的檔案永遠不會被送出。
 - **`/grant` 永遠不會啟動任何東西。** 它只為已經在線上的裝置啟動影格迴圈，並且會以 409 `device_busy` 拒絕把串流從另一台裝置手上搶走。切換裝置必須走明確的 `/switch-device` 手勢；啟動 AVD 則始終屬於 `android_boot` 工具。
