@@ -12,8 +12,9 @@
  *   node scripts/dev-plugin-env-smoke.mjs
  */
 
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { libUrl } from './_smoke-harness.mjs'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const {
@@ -23,7 +24,7 @@ const {
   pluginEnv,
   pluginEnvName,
   resetPluginEnvWarnings,
-} = await import(join(root, 'lib', 'plugin-env.js'))
+} = await import(libUrl(root, 'plugin-env.js'))
 
 const results = []
 function step(name, ok, detail = '') {
