@@ -8,6 +8,24 @@
 
 import { createHmac } from 'node:crypto'
 import http from 'node:http'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+
+/**
+ * Import a path under the repo's built `lib/` directory.
+ *
+ * ALWAYS use this instead of `import(join(root, 'lib', 'x.js'))`. Node's ESM
+ * loader accepts only file/data/node URLs, so a bare Windows path throws
+ * `ERR_UNSUPPORTED_ESM_URL_SCHEME: Received protocol 'c:'` — and because the
+ * suites wrap their imports in a try/catch that turns any failure into a SKIP
+ * ("build not available yet"), that throw does not fail the run: the WHOLE
+ * suite silently reports SKIPPED and exits 0. Measured: four suites
+ * (plugin-env, qa-driver, uitree, vision) never ran a single step on Windows
+ * for exactly this reason, while reporting success.
+ */
+export function libUrl(root, ...segments) {
+  return pathToFileURL(join(root, 'lib', ...segments)).href
+}
 
 /** Three-state step reporter: verdict is true/false or the string 'SKIP'. */
 export function createStepReporter() {

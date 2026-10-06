@@ -318,6 +318,32 @@ export class AndroidHostController {
     await this.toolchain.shell(serial, ['input', 'tap', String(point.x), String(point.y)], { timeoutMs: CONTROL_TIMEOUT_MS })
   }
 
+  /**
+   * Tap at PIXEL coordinates of the input space — the same space a UI tree
+   * reports its bounds in.
+   *
+   * This is the honest form of a tap that came from a tree node. A tree
+   * coordinate is already an input coordinate (verified on hardware: tapping a
+   * node's own pixel lands on it), so a caller that holds one should not
+   * normalize it by one size and multiply it back by another. That round trip
+   * is where the drift lived, and it needed BOTH halves to agree on the space:
+   * `inputSpace()` rotates for rotation 1/3 while `#pixels` does not, so with
+   * no stream running a landscape tree came back with its axes swapped and
+   * `input tap` received a y past the bottom of the display. Sending the pixel
+   * straight through has no second half to disagree with.
+   *
+   * It also drops a `wm size` call per tap and removes the race between two
+   * reads of `latestFrame`.
+   */
+  async tapPixels(serial: string, x: number, y: number): Promise<void> {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw new AdbError(`dsh-android: tapPixels needs finite pixels, got ${x}, ${y}`, [])
+    }
+    await this.toolchain.shell(serial, [
+      'input', 'tap', String(Math.round(x)), String(Math.round(y)),
+    ], { timeoutMs: CONTROL_TIMEOUT_MS })
+  }
+
   /** Drag between normalized coordinates (`input swipe` with duration). */
   async drag(serial: string, drag: AndroidDrag): Promise<void> {
     requireNormalized(drag.fromX, drag.fromY)
@@ -527,6 +553,30 @@ export class AndroidHostController {
       serial: loop.serial,
       ...(frame === undefined ? {} : { width: frame.width, height: frame.height }),
     }
+  }
+
+  /**
+   * The display space `input` addresses (full display, orientation-aware).
+   *
+   * This is the SAME source `#pixels` uses, exposed so a caller holding a
+   * coordinate in another space (the UI tree's app-frame pixels) can normalize
+   * against the space the tap will actually be interpreted in. The two used to
+   * be mixed implicitly: the tap tools normalized by the TREE height while
+   * `#pixels` multiplied by the live frame height, which silently rescaled
+   * every tap.
+   *
+   * `wm size` in the fallback reports the NATURAL panel size and never rotates,
+   * so a caller holding a landscape tree must pass its rotation or the axes
+   * come back swapped.
+   */
+  async inputSpace(serial: string, options: { rotation?: number } = {}): Promise<{ width: number; height: number }> {
+    // The live frame is already in the current display orientation.
+    const frame = this.streamedSerial === serial ? this.latestFrame : undefined
+    if (frame !== undefined) return { width: frame.width, height: frame.height }
+    const natural = await this.toolchain.screenSize(serial)
+    const rotation = options.rotation
+    const swap = rotation === 1 || rotation === 3
+    return swap ? { width: natural.height, height: natural.width } : natural
   }
 
   /** Normalized frame coordinates → `input` pixels via the live frame size. */

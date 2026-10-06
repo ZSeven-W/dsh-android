@@ -141,9 +141,9 @@ export interface AndroidTapRowResult {
   row: AndroidRowOutput
   /** Relative position inside the row frame (0..1) that was tapped. */
   inRow: { x: number; y: number }
-  /** Absolute tap point in display pixels. */
+  /** Absolute tap point in the input space's pixels. */
   center: { x: number; y: number }
-  /** The normalized 0..1 coordinates actually sent to the device. */
+  /** The pixel coordinates actually sent to `input tap`. */
   tap: { x: number; y: number }
   /** Count-change verification, when expect_count was given. */
   countCheck?: CountCheckResult
@@ -199,19 +199,23 @@ export function createAndroidRowTools(host: AndroidToolHost, options: AndroidUiT
   const readRows = async (tool: string, serial: string): Promise<{
     roots: UiTreeNode[]
     screen: { width: number; height: number }
+    rotation?: number
     rows: ListRow[]
     repeatedGroups: number
     omittedOffscreen: number
   }> => {
     let roots: UiTreeNode[]
+    let rotation: number | undefined
     try {
-      roots = (await readUiTree(host.toolchain, serial)).roots
+      const parsed = await readUiTree(host.toolchain, serial)
+      roots = parsed.roots
+      rotation = parsed.rotation
     } catch (error) {
       throw new Error(`${tool}: ${errorMessage(error)}`)
     }
     const screen = screenBoundsOf(roots)
     const detected = detectListRows(roots, { bounds: screen })
-    return { roots, screen, ...detected }
+    return { roots, screen, ...(rotation === undefined ? {} : { rotation }), ...detected }
   }
 
   const androidUiRows = defineTool({
@@ -406,12 +410,12 @@ export function createAndroidRowTools(host: AndroidToolHost, options: AndroidUiT
           + 'android_ui_rows once the screen is on and settled',
         )
       }
-      const tap = {
-        x: round4(plan.tap.x / sample.screen.width),
-        y: round4(plan.tap.y / sample.screen.height),
-      }
+      // A row-relative position is already computed in tree pixels, and a tree
+      // pixel IS an input pixel — so it goes straight through, for the reasons
+      // spelled out on AndroidToolHost.tapPixels.
+      const tap = { x: round4(plan.tap.x), y: round4(plan.tap.y) }
       try {
-        await host.tap(device.serial, tap.x, tap.y)
+        await host.tapPixels(device.serial, tap.x, tap.y)
       } catch (error) {
         throw new Error(`android_tap_row: the tap at (${plan.tap.x}, ${plan.tap.y}) px failed: ${errorMessage(error)}`)
       }
