@@ -1002,12 +1002,14 @@ if (lib !== undefined) {
       // verdict when the platform makes the question unaskable.
       step(
         'the legacy DSH_ANDROID_SWIFTC name still drives resolution',
+
         process.platform === 'darwin'
           ? legacy.available === false && String(legacy.reason).includes('/nonexistent/swiftc-does-not-exist')
           : 'SKIP',
         process.platform === 'darwin'
           ? String(legacy.reason).slice(0, 90)
           : `swiftc is macOS-only; this host runs ${process.platform}`,
+
       )
     } finally {
       if (priorOld === undefined) delete process.env.DSH_ANDROID_SWIFTC

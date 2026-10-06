@@ -53,7 +53,7 @@
     "build": "node scripts/run-tool.mjs tsc -p tsconfig.json && pnpm run build:client",
     "build:client": "node scripts/run-tool.mjs tsc -p tsconfig.client.json && node scripts/run-tool.mjs tsdown src/client/index.tsx --config tsdown.config.mjs --format cjs --platform browser --target es2022 --tsconfig tsconfig.client.json --out-dir .client-build --clean --sourcemap --logLevel warn && node scripts/build-client.mjs",
     "typecheck": "node scripts/run-tool.mjs tsc -p tsconfig.json && node scripts/run-tool.mjs tsc -p tsconfig.client.json",
-    "test": "node scripts/dev-plugin-env-smoke.mjs && node scripts/dev-adb-smoke.mjs && node scripts/dev-tools-smoke.mjs && node scripts/dev-routes-static-smoke.mjs && node scripts/dev-uitree-smoke.mjs && node scripts/dev-qa-driver-smoke.mjs && node scripts/dev-logs-smoke.mjs && node scripts/dev-panel-smoke.mjs && node scripts/dev-vision-smoke.mjs"
+    "test": "node scripts/dev-plugin-env-smoke.mjs && node scripts/dev-adb-smoke.mjs && node scripts/dev-tools-smoke.mjs && node scripts/dev-routes-static-smoke.mjs && node scripts/dev-uitree-smoke.mjs && node scripts/dev-qa-driver-smoke.mjs && node scripts/dev-logs-smoke.mjs && node scripts/dev-panel-smoke.mjs && node scripts/dev-vision-smoke.mjs && node scripts/dev-vision-services-smoke.mjs"
   },
   "packageManager": "pnpm@10.12.1",
   "pnpm": {
