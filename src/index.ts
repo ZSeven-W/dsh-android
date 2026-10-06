@@ -29,6 +29,7 @@ import { createAndroidLogTools } from './tool-logs.js'
 import { createAndroidDebugTools, ANDROID_DEBUG_TOOL_NAMES } from './tool-debug.js'
 import { registerAndroidSkill } from './skill.js'
 import { installStreamRoutes } from './stream-routes.js'
+import type { AndroidTrustConfig } from './stream-access.js'
 
 // ── public API ───────────────────────────────────────────────────────────────
 
@@ -86,6 +87,9 @@ export {
   type ScreenshotTokenPayload,
   type ScreenshotVerdict,
   type StreamTokenPayload,
+  type AndroidTrustConfig,
+  configureTrustedAuthorities,
+  mintTrustedAuthorities,
 } from './stream-access.js'
 export {
   CAPTURE_ROUTE_PATH,
@@ -243,7 +247,7 @@ type HostContext = Context & {
 }
 
 /** Plugin entry: mount every model-facing contribution. */
-export function apply(ctx: Context): () => Promise<void> {
+export function apply(ctx: Context, config: AndroidTrustConfig = {}): () => Promise<void> {
   const hostCtx = ctx as HostContext
   const host = new AndroidHostController()
   // Native multimodal delivery: when the host mounts the attachment store
@@ -310,7 +314,7 @@ export function apply(ctx: Context): () => Promise<void> {
 
   // Signed web routes (stream, screenshot, grant, control, …): mounted on the
   // optional webServer service; headless profiles skip them entirely.
-  installStreamRoutes(ctx, host)
+  installStreamRoutes(ctx, host, config)
 
   const adb = host.toolchain.binary
   ctx.logger.info(

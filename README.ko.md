@@ -93,6 +93,7 @@ DSH Android는 대화 안에서 에이전트에게 진짜 Android 기기를 건�
 
 - **브라우저는 adb와 통신하지 않으며, 애초에 통신할 내부 포트가 존재하지 않습니다.** 스트림은 이 프로세스 안에서 생성되어 메모리에서 바로 제공되고, 모든 바이트는 plugin 소유의 `/_dsh/dsh-android/*` 라우트를 통해 DSH 웹서버 오리진을 경유합니다: `/stream/<token>`(실시간 multipart PNG), `/screenshot/<token>`(캐시된 PNG), 그리고 `/grant`, `/switch-device`, `/devices`, `/capture`, `/status`, `/control`, `/device-action`. 이는 루프백 스트림 서버를 프록시하는 구성보다 엄격하게 더 작은 공격 표면입니다.
 - **삼중 루프백 펜스를, 어떤 capability를 읽기 전에 적용합니다.** 전송 계층 피어는 루프백 주소여야 하고, `Host` 헤더는 루프백 권한을 가리켜야 하며(따라서 DNS 리바인딩 `Host`는 거부됩니다), Fetch-Metadata/`Origin`은 동일 출처여야 합니다. Host와 Origin은 호출자가 통제하는 데이터이므로 그것만으로는 결코 신뢰하지 않습니다.
+- 역방향 프록시 설정: trustedAuthorities는 문자열 배열이어야 하며 모든 플러그인 경로를 인증하는 프록시 뒤에서만 사용합니다. API 클라이언트는 Host와 Origin을 위조할 수 있습니다. Origin은 인증이 아니며 연결 상대는 loopback이어야 합니다. 기본 빈 목록은 공개 호스트를 거부합니다. 포트는 숫자로 정규화되며 지정한 프로토콜과 포트가 Origin을 제한합니다.
 - **10분 안에 만료되는 HMAC-SHA256 capability.** 형식은 `base64url(payload).base64url(mac)`이며 DSH 홈별 32바이트 키(`<DSH_HOME>/cache/dsh-android/stream-access.key`, 모드 0600, 원자적으로 생성)로 서명됩니다. 한 기기용으로 발급된 capability는 다른 기기가 스트림 슬롯을 가져가는 순간 무효가 되고, 스크린샷용 capability를 스트림 라우트에 재생할 수도 없습니다.
 - **스크린샷 라우트는 정확히 한 디렉터리만 제공합니다.** 경로는 `lstat`으로 단계별 검사하고(심볼릭 링크는 무조건 거부), `realpath` 포함 여부 검사로 마무리하며, `O_NOFOLLOW`로 열고 크기를 제한하고 읽은 뒤 **다시 검증**합니다 — 그래서 발급과 조회 사이에 심볼릭 링크로 바꿔치기된 파일은 결코 제공되지 않습니다.
 - **`/grant`는 아무것도 부팅하지 않습니다.** 이미 온라인인 기기에 대해 프레임 루프를 시작할 뿐이며, 다른 기기에서 스트림을 빼앗는 것은 409 `device_busy`로 거부합니다. 기기 전환은 명시적인 `/switch-device` 동작이 필요하고, AVD 부팅은 여전히 `android_boot` 도구의 몫입니다.
