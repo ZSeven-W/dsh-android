@@ -785,7 +785,10 @@ export function installStreamRoutes(
   config: AndroidTrustConfig | undefined,
 ): void {
   ctx.inject(['webServer'], webCtx => webCtx.effect(() => {
-    configureTrustedAuthorities(config)
+    const policies = configureTrustedAuthorities(config)
+    if (config?.trustedAuthorities?.length) {
+      webCtx.logger.info(`dsh-android: ${policies.length} trusted proxy authority policies active; the proxy must authenticate all plugin routes`)
+    }
     const webServer = (webCtx as Context & { webServer: StreamRouteMount }).webServer
     const access = new StreamAccessController()
     const routes = new StreamRoutes(host, access)

@@ -460,8 +460,10 @@ const DESTINATION_ORIGIN_ENTRY = 'https://devices.example.test:8443'
     `bare -> ${byAuthority.get('devices.example.test')?.origin || '(either scheme:80/443)'}, :8443 -> ${byAuthority.get('devices.example.test:8443')?.origin || '(either scheme:8443)'}`,
   )
   step(
-    'an explicitly written default port survives URL canonicalization',
-    mintTrustedAuthorities(['https://pasted.example.test:443'])[0]?.origin === 'https://pasted.example.test:443'
+    'explicit default ports use canonical browser origins and retain their authority policy',
+    mintTrustedAuthorities(['https://pasted.example.test:443'])[0]?.origin === 'https://pasted.example.test'
+      && mintTrustedAuthorities(['https://pasted.example.test:443'])[0]?.port === '443'
+      && mintTrustedAuthorities(['https://pasted.example.test:443'])[0]?.portless === false
       && mintTrustedAuthorities(['pasted.example.test:443'])[0]?.authority === 'pasted.example.test:443',
     `https://…:443 -> ${mintTrustedAuthorities(['https://pasted.example.test:443'])[0]?.origin}`,
   )
@@ -520,6 +522,44 @@ const DESTINATION_ORIGIN_ENTRY = 'https://devices.example.test:8443'
   )
   configureTrustedAuthorities({})
 }
+
+// Canonical origins and YAML config must agree with the actual mounted fence.
+for (const item of [
+  { entries: ['https://canonical.example.test:443'], host: 'canonical.example.test', origin: 'https://canonical.example.test', allowed: true },
+  { entries: ['https://canonical.example.test'], host: 'canonical.example.test', origin: 'http://canonical.example.test', allowed: false },
+  { entries: ['canonical.example.test:80'], host: 'canonical.example.test:80', origin: 'http://canonical.example.test', allowed: true },
+  { entries: ['http://canonical.example.test:80'], host: 'canonical.example.test', origin: 'http://canonical.example.test', allowed: true },
+  { entries: ['canonical.example.test:08443'], host: 'canonical.example.test:8443', origin: 'https://canonical.example.test:8443', allowed: true },
+  { entries: ['https://canonical.example.test', 'canonical.example.test:8443'], host: 'canonical.example.test:8443', origin: 'https://canonical.example.test:8443', allowed: true },
+  { entries: ['http://canonical.example.test:8443', 'https://canonical.example.test:8443'], host: 'canonical.example.test:8443', origin: 'http://canonical.example.test:8443', allowed: true },
+  { entries: ['http://canonical.example.test:8443', 'https://canonical.example.test:8443'], host: 'canonical.example.test:8443', origin: 'https://canonical.example.test:8443', allowed: true },
+  { entries: ['canonical.example.test:8443'], host: 'canonical.example.test:8443', origin: 'https://canonical.example.test:9443', allowed: false },
+  { entries: ['https://canonical.example.test:443'], host: 'canonical.example.test:8443', origin: 'https://canonical.example.test', allowed: false },
+  { entries: ['https://canonical.example.test'], host: 'canonical.example.test:8443', origin: 'https://canonical.example.test', allowed: true },
+  { entries: ['canonical.example.test:443'], host: 'canonical.example.test', origin: 'https://canonical.example.test', allowed: true },
+  { entries: [], host: 'localhost:80', origin: 'https://localhost', allowed: false },
+  { entries: [], host: 'localhost:80', origin: 'https://localhost:80', allowed: true },
+
+]) {
+  configureTrustedAuthorities({ trustedAuthorities: item.entries })
+  const res = await postJson(route('status'), {}, { host: item.host, origin: item.origin })
+  step(`canonical policy ${item.entries.join(' + ')} with ${item.origin}`, (res.status !== 403) === item.allowed, `${res.status}`)
+}
+{
+  let refused = 0
+  for (const input of ['canonical.example.test', null, ['canonical.example.test', 42]]) {
+    try { configureTrustedAuthorities({ trustedAuthorities: input }) }
+    catch (error) { if (/array of strings/.test(error.message)) refused += 1 }
+  }
+  step('malformed YAML authority lists are refused rather than iterated', refused === 3, `${refused}/3`)
+  step('pasted URL credentials are never minted as a trusted authority', mintTrustedAuthorities(['https://fixture:fixture@canonical.example.test']).length === 0)
+  configureTrustedAuthorities({})
+  const port = mini.server.address().port
+  const other = port === 5173 ? 5174 : 5173
+  const res = await postJson(route('status'), {}, { host: `localhost:${port}`, origin: `http://localhost:${other}` })
+  step('another loopback port cannot issue state-changing requests', res.status === 403, `${res.status}`)
+}
+configureTrustedAuthorities({})
 
 // ── 4. method / content-type / body envelope ────────────────────────────────
 
