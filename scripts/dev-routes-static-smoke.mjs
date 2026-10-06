@@ -50,7 +50,7 @@ try {
 }
 
 const { StreamRoutes, mountStreamRoutes, PLUGIN_ROUTE_PREFIX } = streamRoutes
-const { StreamAccessController, screenshotDir } = streamAccess
+const { StreamAccessController, screenshotDir, configureTrustedAuthorities, mintTrustedAuthorities } = streamAccess
 
 const SIGNING_KEY = Buffer.alloc(32, 7)
 const WRONG_KEY = Buffer.alloc(32, 9)
@@ -325,6 +325,200 @@ step(
     res.status === 403,
     String(res.status),
   )
+}
+
+// ── 3b. the reverse-proxy allowlist ─────────────────────────────────────────
+
+// Every case above runs with the shipped default: no configured authority. The
+// block below turns the allowlist on and off around its own assertions, and
+// puts it back to empty so nothing after it inherits a wider fence.
+const DESTINATION_HOST = 'devices.example.test:8443'
+/** The same deployment written the way a browser bar shows it. */
+const DESTINATION_ORIGIN_ENTRY = 'https://devices.example.test:8443'
+
+{
+  configureTrustedAuthorities({})
+  const res = await postJson(route('status'), {}, {
+    host: DESTINATION_HOST,
+    origin: `https://${DESTINATION_HOST.split(':')[0]}`,
+  })
+  step(
+    'an unconfigured allowlist refuses a proxied authority (the shipped default)',
+    res.status === 403 && res.json?.code === 'forbidden',
+    `${res.status} ${res.json?.code}`,
+  )
+}
+{
+  // The shape a reverse proxy forwards: a loopback peer (necessarily — this
+  // suite talks to the loopback port) with the deployment's public authority in
+  // Host, and a browser Origin that carries no port because it is the default
+  // one. Without the allowlist this is the 403 the whole feature exists for.
+  configureTrustedAuthorities({ trustedAuthorities: [DESTINATION_ORIGIN_ENTRY] })
+  const res = await postJson(route('status'), {}, {
+    host: DESTINATION_HOST,
+    origin: DESTINATION_ORIGIN_ENTRY,
+  })
+  step(
+    'a configured origin is accepted with a loopback peer, Host and Origin on different ports',
+    res.status !== 403,
+    `${res.status} ${res.json?.code ?? 'ok'}`,
+  )
+}
+{
+  // The second-most-natural spelling: an operator writes the authority they see
+  // in the browser bar plus the port the proxy listens on, and the deployment
+  // serves HTTPS. A bare `host:port` carries no scheme, so it must stand for
+  // that port on either one — otherwise the entry silently does nothing in
+  // exactly the deployment this feature exists for.
+  configureTrustedAuthorities({ trustedAuthorities: [DESTINATION_HOST] })
+  const httpsOrigin = await postJson(route('status'), {}, {
+    host: DESTINATION_HOST,
+    origin: `https://devices.example.test:8443`,
+  })
+  const httpOrigin = await postJson(route('status'), {}, {
+    host: DESTINATION_HOST,
+    origin: `http://devices.example.test:8443`,
+  })
+  const wrongPort = await postJson(route('status'), {}, {
+    host: DESTINATION_HOST,
+    origin: 'https://devices.example.test:9443',
+  })
+  step(
+    'a bare host:port entry serves either scheme on that port, and only that port',
+    httpsOrigin.status !== 403 && httpOrigin.status !== 403 && wrongPort.status === 403,
+    `https ${httpsOrigin.status}, http ${httpOrigin.status}, wrong port ${wrongPort.status}`,
+  )
+}
+{
+  // The security half of that: an origin is host AND port, so another
+  // application on the same hostname must not be able to drive these routes.
+  // Browsers call that same-site rather than cross-site, so nothing else in the
+  // fence refuses it.
+  configureTrustedAuthorities({ trustedAuthorities: [DESTINATION_ORIGIN_ENTRY] })
+  const otherPort = await postJson(route('status'), {}, {
+    host: DESTINATION_HOST,
+    origin: 'https://devices.example.test:9443',
+  })
+  const otherPortDefault = await postJson(route('status'), {}, {
+    host: DESTINATION_HOST,
+    origin: 'https://devices.example.test',
+  })
+  step(
+    'a same-hostname origin on another port, explicit or default, is refused (403)',
+    otherPort.status === 403 && otherPortDefault.status === 403,
+    `other port ${otherPort.status}, default port ${otherPortDefault.status}`,
+  )
+}
+{
+  configureTrustedAuthorities({ trustedAuthorities: [DESTINATION_HOST] })
+  const res = await postJson(route('status'), {}, {
+    host: 'other.example.test',
+    origin: 'https://other.example.test',
+  })
+  step(
+    'an authority that is NOT on the allowlist is still refused (403)',
+    res.status === 403 && res.json?.code === 'forbidden',
+    `${res.status} ${res.json?.code}`,
+  )
+}
+{
+  // Entries are typed by hand into a YAML patch file, so the accept/reject rule
+  // is worth pinning: a typo that mints nothing is indistinguishable from an
+  // empty list at runtime.
+  const minted = mintTrustedAuthorities([
+    'devices.example.test',
+    'devices.example.test:8443',
+    'devices.example.test',
+    'https://pasted.example.test',
+    'https://pasted.example.test/path',
+    'not a host',
+    '',
+    '   ',
+    'user:secret@host.example.test',
+  ])
+  const authorities = minted.map(entry => entry.authority)
+  const byAuthority = new Map(minted.map(entry => [entry.authority, entry]))
+  step(
+    'the allowlist mints hosts and host:port, de-duplicated, and drops malformed entries',
+    authorities.length === 3
+      && authorities.includes('devices.example.test')
+      && authorities.includes('devices.example.test:8443')
+      && authorities.includes('pasted.example.test')
+      // A pasted origin with no port is a portless entry too — "no port written"
+      // has one meaning now — while the scheme it recorded is kept.
+      && byAuthority.get('pasted.example.test')?.portless === true
+      && byAuthority.get('pasted.example.test')?.authoredScheme === true,
+    authorities.join(', '),
+  )
+  step(
+    'a bare host takes either scheme on its default port, and a written port pins the origin',
+    byAuthority.get('devices.example.test')?.portless === true
+      // A bare `host:port` carries no scheme, so it records none: it stands for
+      // that port on either scheme, which is what an HTTPS reverse proxy needs.
+      && byAuthority.get('devices.example.test:8443')?.origin === ''
+      && byAuthority.get('devices.example.test:8443')?.portless === false,
+    `bare -> ${byAuthority.get('devices.example.test')?.origin || '(either scheme:80/443)'}, :8443 -> ${byAuthority.get('devices.example.test:8443')?.origin || '(either scheme:8443)'}`,
+  )
+  step(
+    'an explicitly written default port survives URL canonicalization',
+    mintTrustedAuthorities(['https://pasted.example.test:443'])[0]?.origin === 'https://pasted.example.test:443'
+      && mintTrustedAuthorities(['pasted.example.test:443'])[0]?.authority === 'pasted.example.test:443',
+    `https://…:443 -> ${mintTrustedAuthorities(['https://pasted.example.test:443'])[0]?.origin}`,
+  )
+  step(
+    'a bracketed IPv6 authority survives whether or not it carries a scheme',
+    mintTrustedAuthorities(['[::1]:3080'])[0]?.authority === '[::1]:3080'
+      && mintTrustedAuthorities(['http://[::1]:3080'])[0]?.authority === '[::1]:3080'
+      // No port written is a portless entry, not a bogus `[::1]:1]`.
+      && mintTrustedAuthorities(['http://[::1]'])[0]?.authority === '[::1]'
+      // "No port written" means the same thing with or without a scheme.
+      && mintTrustedAuthorities(['http://[::1]'])[0]?.portless === true
+      && mintTrustedAuthorities(['[::1]'])[0]?.authority === '[::1]'
+      && mintTrustedAuthorities(['[::1]'])[0]?.portless === true
+      && mintTrustedAuthorities(['[::1]:3080'])[0]?.portless === false,
+    `[::1]:3080 -> ${mintTrustedAuthorities(['[::1]:3080'])[0]?.authority}, http://[::1] -> ${mintTrustedAuthorities(['http://[::1]'])[0]?.authority}`,
+  )
+}
+{
+  // Regression guard for the discriminator: an operator may legitimately list a
+  // loopback authority (an SSH tunnel does), and doing so must not redirect the
+  // LOCAL path into the configured-origin branch, which only knows default ports
+  // and would refuse the panel on its own port.
+  const { port } = mini.server.address()
+  configureTrustedAuthorities({ trustedAuthorities: [`localhost:${port}`] })
+  const listed = await postJson(route('status'), {}, {
+    host: `localhost:${port}`,
+    origin: `http://localhost:${port}`,
+  })
+  configureTrustedAuthorities({ trustedAuthorities: ['localhost'] })
+  const listedBare = await postJson(route('status'), {}, {
+    host: `localhost:${port}`,
+    origin: `http://localhost:${port}`,
+  })
+  configureTrustedAuthorities({})
+  step(
+    'listing a loopback authority does not narrow the local path (port included and bare)',
+    listed.status !== 403 && listedBare.status !== 403,
+    `listed :${port} -> ${listed.status}, listed bare -> ${listedBare.status}`,
+  )
+}
+{
+  // The property that makes the whole design safe: the allowlist can never
+  // bypass the peer-address half. A LAN client cannot be simulated through a
+  // loopback socket, so this asserts the predicate directly.
+  // A bare host is the portable entry: it stands for that host on either
+  // scheme's default port, so both headers are consistent for it.
+  configureTrustedAuthorities({ trustedAuthorities: ['devices.example.test'] })
+  const { isTrustedRequest } = streamAccess
+  const headers = { host: 'devices.example.test', origin: 'https://devices.example.test' }
+  const fromLan = isTrustedRequest({ method: 'POST', url: '/', headers, socket: { remoteAddress: '203.0.113.7' } }, true)
+  const fromLoopback = isTrustedRequest({ method: 'POST', url: '/', headers, socket: { remoteAddress: '127.0.0.1' } }, true)
+  step(
+    'a non-loopback peer is refused even when its authority IS allowlisted',
+    fromLan === false && fromLoopback === true,
+    `peer 203.0.113.7 -> ${fromLan}, peer 127.0.0.1 -> ${fromLoopback}`,
+  )
+  configureTrustedAuthorities({})
 }
 
 // ── 4. method / content-type / body envelope ────────────────────────────────

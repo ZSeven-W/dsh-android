@@ -54,9 +54,11 @@ import { MultipartFrameWriter } from './frame-source.js'
 import {
   StreamAccessController,
   classifyScreenshotPath,
+  configureTrustedAuthorities,
   isTrustedRequest,
   openVerifiedScreenshot,
   screenshotDir,
+  type AndroidTrustConfig,
 } from './stream-access.js'
 
 /** HTTP prefix owned by the dsh-android web routes. */
@@ -777,8 +779,13 @@ export function mountStreamRoutes(webServer: StreamRouteMount, routes: StreamRou
  * load, the routes are registered exactly once, and disposal unregisters
  * them and destroys every open stream.
  */
-export function installStreamRoutes(ctx: Context, host: AndroidHostController): void {
+export function installStreamRoutes(
+  ctx: Context,
+  host: AndroidHostController,
+  config: AndroidTrustConfig | undefined,
+): void {
   ctx.inject(['webServer'], webCtx => webCtx.effect(() => {
+    configureTrustedAuthorities(config)
     const webServer = (webCtx as Context & { webServer: StreamRouteMount }).webServer
     const access = new StreamAccessController()
     const routes = new StreamRoutes(host, access)

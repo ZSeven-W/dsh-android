@@ -26,6 +26,222 @@ import { SERIAL_PATTERN } from './adb.js'
 /** Hard capability lifetime (tokens expire within 10 minutes). */
 export const TOKEN_TTL_MS = 10 * 60 * 1000
 
+/**
+ * Hosts this deployment deliberately serves, in the `host` or `host:port` form
+ * of an HTTP authority; the port-less form matches any port.
+ *
+ * Why this exists. The fence below refuses anything whose peer is not loopback,
+ * because a client on the LAN can reach the dsh Web port directly and claim
+ * `Host: localhost` — the peer address is the only part of a request a remote
+ * caller cannot write, so it decides. That reasoning holds when the peer IS the
+ * browser. Behind a reverse proxy it is not: the last hop is made by a process
+ * on this machine, so the peer is genuinely loopback while the Host the proxy
+ * forwards is the deployment's public name, and every route answers 403. The
+ * plugin then works only through an SSH tunnel, and not behind the deployment
+ * shape DSH documents for itself: DSH's own `--trusted-host` values are the twin
+ * of this list, and its webserver consults them for exactly this reason.
+ *
+ * Listing an authority here is the operator stating: requests arriving under
+ * this name have passed whatever authentication this deployment put in front of
+ * it. Two properties are load-bearing:
+ *
+ * - The peer-address check still applies first, so a LAN client on the web port
+ *   is refused however it writes its Host header, and a forged
+ *   `X-Forwarded-Host` cannot invent an entry that is not on this list.
+ * - The default is empty, which keeps the shipped behaviour byte-for-byte.
+ */
+export type AndroidTrustConfig = {
+  /** Extra request authorities accepted in addition to a loopback Host. */
+  trustedAuthorities?: readonly string[]
+}
+
+/** One configured entry, pre-split so no call site has to parse it twice.
+ *
+ * `authority` is what a `Host` header may say (`host[:port]`), `origin` is what
+ * an `Origin` header may say (`scheme://host[:port]`), and both always carry a
+ * port — a written one, or the scheme's default. An `Origin` is an origin, and
+ * an origin includes its port: another application on the same hostname but a
+ * different port is a different origin, browsers treat it as `same-site` rather
+ * than `cross-site`, and a state-changing POST from it would execute.
+ */
+type MintedAuthority = { authority: string; origin: string; hostname: string; portless: boolean; authoredScheme: boolean }
+
+let trustedAuthorities: readonly MintedAuthority[] = []
+
+/**
+ * The port written at the end of an AUTHORITY, if one is written at all.
+ *
+ * Takes `host[:port]` with no scheme: the URL parser already knows where the
+ * authority ends, and handing this function a scheme would put a colon in front
+ * of it that is not a port separator — and would defeat the bracket guard below,
+ * since a bracketed IPv6 literal no longer starts the string.
+ */
+function writtenPort(authority: string): string | undefined {
+  const separator = authority.lastIndexOf(':')
+  if (separator === -1) return undefined
+  // A bracketed IPv6 literal keeps its colons inside the brackets, so only a
+  // colon AFTER the closing bracket can be a port.
+  const bracket = authority.indexOf(']')
+  if (authority.startsWith('[') && bracket !== -1 && separator < bracket) return undefined
+  const port = authority.slice(separator + 1)
+  return port === '' ? undefined : port
+}
+
+/** The `host[:port]` part of an entry that carries a scheme. */
+function authorityOfUrl(value: string): string | undefined {
+  const from = value.indexOf('://')
+  if (from === -1) return undefined
+  // A pasted origin has no path, query, hash or userinfo — anything after the
+  // authority is caught by the caller's URL checks, so this only has to cut at
+  // the first character that cannot be part of an authority.
+  const rest = value.slice(from + 3)
+  const end = rest.search(/[/?#]/)
+  return end === -1 ? rest : rest.slice(0, end)
+}
+
+/**
+ * Normalize one operator entry to an authority plus the origin it stands for,
+ * or nothing.
+ *
+ * A written port survives even when it is the scheme's default, because the
+ * operator wrote it and the check should honour that; a port that is absent
+ * becomes the scheme's default, because `Origin` always carries one.
+ */
+function normalizeAuthorityEntry(entry: string): MintedAuthority | undefined {
+  const trimmed = entry.trim()
+  if (trimmed === '') return undefined
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
+    // A pasted origin is the normal way to fill this in, so accept it — but only
+    // when the URL is nothing BUT an origin, and without a path or credentials.
+    try {
+      const parsed = new URL(trimmed)
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined
+      if (parsed.hostname === '' || parsed.pathname !== '/' || parsed.search !== '' || parsed.hash !== '') return undefined
+      // The canonical URL drops a default port, so the written one is read from
+      // the input: `https://host:443` means 443, and the operator wrote it.
+      const port = writtenPort(authorityOfUrl(trimmed) ?? '') ?? parsed.port
+      const scheme = parsed.protocol.slice(0, -1)
+      // Built from the hostname, not from `parsed.host`: a URL with no port at
+      // all would otherwise carry its scheme into the authority.
+      const host = parsed.hostname.toLowerCase()
+      if (port === '') {
+        // No port written, so this stands for the host on that scheme's default
+        // port — the same meaning a bare host has, and the reason `https://host`
+        // and `host` behave alike. Writing the scheme records which one.
+        return { authority: host, origin: '', hostname: host, portless: true, authoredScheme: true }
+      }
+      const authority = `${host}:${port}`
+      return { authority, origin: `${scheme}://${authority}`, hostname: host, portless: false, authoredScheme: true }
+    } catch {
+      return undefined
+    }
+  }
+  // A scheme belongs to the branch above; one here means the value carries
+  // something this form cannot, so it is refused rather than parsed as a path.
+  if (trimmed.includes('://')) return undefined
+  // Reuse the request side's parser so both sides agree on what a bare
+  // authority is: a path, query, fragment, or userinfo disqualifies it.
+  const parsed = parseAuthority(trimmed)
+  if (parsed === undefined) return undefined
+  const hostname = parsed.hostname.toLowerCase()
+  const port = writtenPort(trimmed) ?? parsed.port
+  if (hostname === '') return undefined
+  if (port === '') {
+    // No port is not "any port": the origin check needs one, and both schemes'
+    // defaults are what an operator writing a bare host means. Record the pair
+    // so a request may match either, which is what makes a plain `dsh.example.com`
+    // work for both http and https deployments.
+    return { authority: hostname, origin: '', hostname, portless: true, authoredScheme: false }
+  }
+  const authority = `${hostname}:${port}`
+  // A bare `host:port` carries no scheme, so claiming one would refuse the
+  // deployment this feature exists for: the common reverse-proxy setup serves
+  // HTTPS on a non-default port and the operator writes `host:8443`. The entry
+  // therefore stands for that port on EITHER scheme, and the scheme is pinned by
+  // writing it (`https://host:8443`). `origin: ''` is what records that.
+  return { authority, origin: '', hostname, portless: false, authoredScheme: false }
+}
+
+/**
+ * Reduce operator input to sorted, de-duplicated authorities, discarding
+ * anything that is not one. Exported because the shape is worth pinning in a
+ * test of its own: these entries are written by hand in a YAML patch file, and
+ * a typo that silently mints nothing looks exactly like an empty list.
+ */
+export function mintTrustedAuthorities(entries: readonly string[] | undefined): readonly MintedAuthority[] {
+  if (entries === undefined) return []
+  const minted = new Map<string, MintedAuthority>()
+  for (const entry of entries) {
+    if (typeof entry !== 'string') continue
+    const mintedEntry = normalizeAuthorityEntry(entry)
+    if (mintedEntry === undefined || mintedEntry.authority === '') continue
+    minted.set(mintedEntry.authority, mintedEntry)
+  }
+  return [...minted.values()].sort((left, right) => (left.authority < right.authority ? -1 : 1))
+}
+
+/**
+ * Install the operator's trusted-authority list. Called by the plugin before it
+ * mounts its routes; empty, or never called, leaves the fence exactly as
+ * shipped.
+ */
+export function configureTrustedAuthorities(config: AndroidTrustConfig | undefined): void {
+  trustedAuthorities = mintTrustedAuthorities(config?.trustedAuthorities)
+}
+
+/**
+ * The entry a request's Host header names, or undefined. Compared by hostname
+ * rather than by slicing on ':', which would cut an IPv6 literal in half.
+ */
+function trustedEntryForHost(authority: URL): MintedAuthority | undefined {
+  const host = authority.host.toLowerCase()
+  const hostname = authority.hostname.toLowerCase()
+  for (const entry of trustedAuthorities) {
+    if (entry.authority === host) return entry
+    if (entry.portless && entry.hostname === hostname) return entry
+  }
+  return undefined
+}
+
+/**
+ * Whether the browser's Origin is the origin the matched entry stands for, or
+ * one of the two the pair of a port-less entry stands for (`''` records the
+ * pair). The port is compared as part of it: an origin is scheme, host AND
+ * port, so accepting any port on a trusted hostname would let any application
+ * on that host issue state-changing requests to these routes.
+ */
+function matchesTrustedOrigin(entry: MintedAuthority, origin: URL): boolean {
+  if (origin.protocol !== 'http:' && origin.protocol !== 'https:') return false
+  if (entry.origin === '') {
+    // An entry with no scheme of its own: a bare host stands for that host on
+    // either scheme's DEFAULT port, and a bare `host:port` for that port on
+    // either scheme. The port is still compared — an origin is host AND port.
+    if (origin.hostname.toLowerCase() !== entry.hostname) return false
+    const expected = entry.portless
+      ? (origin.protocol === 'https:' ? '443' : '80')
+      : entry.authority.slice(entry.authority.lastIndexOf(':') + 1)
+    const actual = origin.port === '' ? (origin.protocol === 'https:' ? '443' : '80') : origin.port
+    return actual === expected
+  }
+  // A written scheme pins it. A bare authority carries no scheme, so what it can
+  // honestly stand for is `http://` — the scheme the request side parses every
+  // bare authority under — while an `https` origin is listed as a pasted origin
+  // if that is what the deployment serves. A bare HOST (no port at all) is the
+  // portable entry: it takes either scheme on that scheme's default port.
+  return entry.origin === `${origin.protocol.slice(0, -1)}://${origin.host.toLowerCase()}`
+}
+
+/**
+ * Whether the Origin names the same origin as the Host it arrived with. Used
+ * when the Host is a loopback authority, which is a specific origin — scheme
+ * aside, because the arriving request's scheme is not in either header.
+ */
+function hostMatchesOrigin(authority: URL, origin: URL): boolean {
+  const authorityPort = authority.port === '' ? (origin.protocol === 'https:' ? '443' : '80') : authority.port
+  const originPort = origin.port === '' ? (origin.protocol === 'https:' ? '443' : '80') : origin.port
+  return authority.hostname.toLowerCase() === origin.hostname.toLowerCase() && authorityPort === originPort
+}
+
 const KEY_BYTES = 32
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
 const MAX_TOKEN_LENGTH = 16 * 1024
@@ -247,11 +463,10 @@ function isLoopbackHostname(hostname: string): boolean {
   return isIpv4LoopbackAddress(hostname)
 }
 
-function requestAuthority(req: IncomingMessage): URL | undefined {
-  const host = req.headers.host
-  if (typeof host !== 'string') return undefined
+/** Parse a bare `host[:port]` authority, rejecting anything with more in it. */
+function parseAuthority(authority: string): URL | undefined {
   try {
-    const parsed = new URL(`http://${host}`)
+    const parsed = new URL(`http://${authority}`)
     if (parsed.pathname !== '/' || parsed.search !== '' || parsed.hash !== '' || parsed.username !== '' || parsed.password !== '') {
       return undefined
     }
@@ -261,13 +476,24 @@ function requestAuthority(req: IncomingMessage): URL | undefined {
   }
 }
 
-function isLoopbackRequest(req: IncomingMessage): boolean {
-  if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) return false
-  const authority = requestAuthority(req)
-  return authority !== undefined && isLoopbackHostname(authority.hostname)
+function requestAuthority(req: IncomingMessage): URL | undefined {
+  const host = req.headers.host
+  if (typeof host !== 'string') return undefined
+  return parseAuthority(host)
 }
 
-function isTrustedBrowserRequest(req: IncomingMessage, requireOrigin: boolean): boolean {
+function isTrustedTransportRequest(req: IncomingMessage): boolean {
+  // Half one is unchanged and not configurable: the peer must be loopback, so a
+  // LAN client on the web port cannot pass however it writes its Host header.
+  if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) return false
+  const authority = requestAuthority(req)
+  if (authority === undefined) return false
+  // Half two: either the Host itself is loopback, or the operator listed the
+  // authority their reverse proxy forwards.
+  return isLoopbackHostname(authority.hostname) || trustedEntryForHost(authority) !== undefined
+}
+
+function isTrustedBrowserRequest(req: IncomingMessage, requireOrigin: boolean, entry: MintedAuthority | undefined): boolean {
   if (req.headers['sec-fetch-site'] === 'cross-site') return false
   const origin = req.headers.origin
   if (origin === undefined) return !requireOrigin
@@ -276,8 +502,19 @@ function isTrustedBrowserRequest(req: IncomingMessage, requireOrigin: boolean): 
   if (authority === undefined) return false
   try {
     const parsed = new URL(origin)
-    return (parsed.protocol === 'http:' || parsed.protocol === 'https:')
-      && parsed.host === authority.host
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+    if (parsed.hostname === '') return false
+    // A configured authority is compared against the origin the operator listed
+    // for it, which is the only way a proxied deployment can be checked at all:
+    // the browser sends the PUBLIC origin (usually with no port, because 443 is
+    // implicit) while the proxy forwards its own Host, so comparing the two
+    // headers with each other refuses a same-origin request. It is not a reason
+    // to drop the port from the comparison — see `matchesTrustedOrigin`.
+    if (entry !== undefined) return matchesTrustedOrigin(entry, parsed)
+    // A loopback Host is a specific origin, so the port has to agree: the DSH
+    // webserver answers on one port, and another application on the same
+    // hostname must not be able to drive these routes.
+    return hostMatchesOrigin(authority, parsed)
   } catch {
     return false
   }
@@ -285,7 +522,18 @@ function isTrustedBrowserRequest(req: IncomingMessage, requireOrigin: boolean): 
 
 /** The transport fence applied to every dsh-android route. */
 export function isTrustedRequest(req: IncomingMessage, requireOrigin: boolean): boolean {
-  return isLoopbackRequest(req) && isTrustedBrowserRequest(req, requireOrigin)
+  // The transport decides first, and it is the half that actually refuses a
+  // remote caller; the header checks are only meaningful after it passes.
+  if (!isTrustedTransportRequest(req)) return false
+  const authority = requestAuthority(req)
+  // A loopback Host is the local-browser case and is judged on its own: letting
+  // an allowlist entry (an operator may well list `localhost` for an SSH tunnel)
+  // redirect it into the configured-origin branch would make listing an entry
+  // NARROW the fence, refusing the local panel on its own port.
+  const entry = authority === undefined || isLoopbackHostname(authority.hostname)
+    ? undefined
+    : trustedEntryForHost(authority)
+  return isTrustedBrowserRequest(req, requireOrigin, entry)
 }
 
 // ── screenshot path containment ──────────────────────────────────────────────
