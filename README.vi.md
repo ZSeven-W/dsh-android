@@ -73,9 +73,9 @@ Tọa độ ở khắp nơi đều được **chuẩn hóa 0..1 theo khung hình
 
 | Công cụ | Chức năng | Tham số chính |
 | --- | --- | --- |
-| `android_find_text` | OCR màn hình HIỆN TẠI bằng trình hỗ trợ Vision do plugin biên dịch (nhận dạng chính xác, zh-Hans + en-US). Dùng nó khi cây UI rỗng hoặc suy biến, khi văn bản được vẽ dưới dạng đồ họa (số huy hiệu, giá nung vào ảnh), hoặc để kiểm chứng độc lập những gì đang hiện trên màn hình. Trả về `{device, size, items:[{text, confidence, rect}]}` trong đó rect là các hộp **pixel** gốc ở góc trên bên trái, sắp theo độ tin cậy và giới hạn ở khoảng 40 KB. Chỉ chạy trên máy chủ macOS. | `device`, `query` (chuỗi con không phân biệt hoa thường), `min_confidence` (mặc định 0.3) |
-| `android_tap_text` | OCR màn hình HIỆN TẠI rồi chạm vào tâm của kết quả khớp văn bản tốt nhất — cùng bộ quy tắc chính xác → chứa → danh sách ứng viên như `android_tap_element`, dành cho văn bản mà cây UI không nhìn thấy. Tâm pixel khớp được chuẩn hóa theo kích thước khung rồi gửi đi dưới dạng một cú chạm; sau ~300 ms một ảnh chụp mới cho thấy kết quả. Chỉ chạy trên máy chủ macOS. | `device`, `query` (bắt buộc), `min_confidence`, `expect_text`, `expect_gone` |
-| `android_wait_for` | Chờ cho đến khi văn bản xuất hiện hoặc biến mất, thăm dò cùng một quy trình chụp + OCR mỗi 600 ms cho tới khi điều kiện thỏa hoặc hết thời gian chờ (mặc định 8 s, tối đa 60 s). Hết thời gian chờ là một câu trả lời `matched:false` bình thường, không bao giờ là lỗi. Chỉ chạy trên máy chủ macOS. | `device`, `text` (bắt buộc), `mode` (`appear`/`disappear`), `timeout_ms`, `min_confidence` |
+| `android_find_text` | Nhận dạng màn hình hiện tại bằng bộ OCR đã chọn. Trả về hộp pixel từ góc trên trái, theo độ tin cậy, tối đa 40 KB. | `serial`, `query` (chuỗi con không phân biệt hoa thường), `min_confidence` (mặc định 0.3) |
+| `android_tap_text` | Tìm khớp chính xác rồi khớp chuỗi con; nếu mơ hồ thì trả về ứng viên. Chạm trực tiếp vào tâm pixel nhận dạng và chụp kết quả. | `serial`, `query` (bắt buộc), `min_confidence`, `expect_text`, `expect_gone` |
+| `android_wait_for` | Đợi văn bản xuất hiện hoặc biến mất: mặc định 8 giây, tối đa 60 giây. Hết thời gian trả về `matched:false`. | `serial`, `text` (bắt buộc), `mode` (`appear`/`disappear`), `timeout_ms`, `min_confidence` |
 | `android_logs` | Đọc những gì thiết bị ghi lại: `snapshot` (`logcat -d -v time` trong một khoảng thời gian gần đây, mặc định 2m) hoặc `follow` (một lần thu trực tiếp có giới hạn theo `duration_seconds`, mặc định 10, tối đa 60 — không bao giờ là một luồng treo vô hạn). Lọc theo một ứng dụng bằng `bundle_id` (tên gói Android, được phân giải sang pid của nó). Đầu ra giới hạn ở khoảng 300 dòng / 30 KB kèm gợi ý thu hẹp. | `device`, `mode` (`snapshot`/`follow`), `duration`, `duration_seconds`, `bundle_id`, `grep` |
 | `android_processes` | Liệt kê các tiến trình đang chạy trên thiết bị (`ps -A`) dưới dạng `{pid, name}` — nguồn cung cấp pid cho `android_backtrace`. | `device`, `filter` (chuỗi con không phân biệt hoa thường trên tên tiến trình) |
 | `android_backtrace` | Yêu cầu tiến trình kết xuất ngăn xếp của nó (`kill -3`) rồi đọc tệp ANR trace thu được trong `/data/anr/`. Phần lớn thiết bị chưa root từ chối thư mục đó, nên công cụ hạ cấp xuống bộ đệm sự cố (`logcat -b crash -d`) và báo cáo trung thực rằng cơ chế nào đã trả lời cũng như nó không nhìn thấy được những gì. | `device`, `pid` hoặc `bundle_id` |
@@ -218,3 +218,14 @@ vật lý không bao giờ bị ảnh hưởng.
 - Xem [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) để biết đầy đủ các thông báo.
 
 **Giấy phép**: MIT
+
+### OCR: Vision / Tesseract
+
+Mặc định `auto` dùng Vision trên macOS và Tesseract tùy chọn trên Windows/Linux. Người dùng cài chương trình và dữ liệu ngôn ngữ. Ký tự Trung Quốc được ghép theo dòng TSV; khoảng trắng giữa từ Latin được giữ lại.
+
+- `DSHPLUGIN_ANDROID_OCR_BACKEND`: `auto`, `vision`, `tesseract`.
+- `DSHPLUGIN_ANDROID_TESSERACT_BINARY`: Tesseract executable path.
+- `DSHPLUGIN_ANDROID_TESSERACT_LANGUAGES`: `eng+chi_sim`.
+- `DSHPLUGIN_ANDROID_TESSERACT_DATA_DIR`: Optional language-model directory.
+
+[Tesseract CLI](https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html)

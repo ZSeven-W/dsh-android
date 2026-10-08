@@ -73,9 +73,9 @@ DSH Android 把一台真實的 Android 裝置交給智慧代理，同時把畫�
 
 | 工具 | 作用 | 關鍵參數 |
 | --- | --- | --- |
-| `android_find_text` | 用外掛程式自行編譯的 Vision 輔助程式對**目前**螢幕做 OCR（accurate 辨識，zh-Hans + en-US）。適用於 UI 樹為空或退化、文字被繪製成圖形（角標數字、燒進圖片的價格），或需要獨立驗證螢幕內容時。回傳 `{device, size, items:[{text, confidence, rect}]}`，其中 rect 是原點在左上角的**像素**框，依信心值排序並限制在約 40 KB。僅限 macOS 主機。 | `device`、`query`（大小寫不敏感子字串）、`min_confidence`（預設 0.3） |
-| `android_tap_text` | 對**目前**螢幕做 OCR 並點按最佳文字比對的中心——規則與 `android_tap_element` 完全相同（精確 → 包含 → 列出候選），用於 UI 樹看不見的文字。比對到的像素中心會依影格尺寸歸一化後送出點按；約 300 ms 後以螢幕擷取顯示效果。僅限 macOS 主機。 | `device`、`query`（必填）、`min_confidence`、`expect_text`、`expect_gone` |
-| `android_wait_for` | 等待文字出現或消失，以相同的擷取 + OCR 管線每 600 ms 輪詢一次，直到條件成立或逾時（預設 8 秒，上限 60 秒）。逾時是正常的 `matched:false` 答案，絕不是錯誤。僅限 macOS 主機。 | `device`、`text`（必填）、`mode`（`appear`/`disappear`）、`timeout_ms`、`min_confidence` |
+| `android_find_text` | 以所選 OCR 後端辨識目前螢幕，回傳依信心值排序的像素框（左上角原點），上限 40 KB。 | `serial`、`query`（大小寫不敏感子字串）、`min_confidence`（預設 0.3） |
+| `android_tap_text` | 優先精確比對，再以子字串比對；有歧義時列出候選。直接點按辨識框的像素中心，再擷取螢幕驗證。 | `serial`、`query`（必填）、`min_confidence`、`expect_text`、`expect_gone` |
+| `android_wait_for` | 等待文字出現或消失，預設 8 秒、最多 60 秒；逾時回傳 `matched:false`。 | `serial`、`text`（必填）、`mode`（`appear`/`disappear`）、`timeout_ms`、`min_confidence` |
 | `android_logs` | 讀取裝置的記錄：`snapshot`（對近期視窗執行 `logcat -d -v time`，預設 2m）或 `follow`（有界的即時擷取 `duration_seconds`，預設 10、上限 60——絕不會是掛住的串流）。用 `bundle_id`（Android 套件名稱，會解析成 pid）過濾到單一應用程式。輸出上限約 300 行 / 30 KB，並附上收窄範圍的提示。 | `device`、`mode`（`snapshot`/`follow`）、`duration`、`duration_seconds`、`bundle_id`、`grep` |
 | `android_processes` | 列出裝置上執行中的處理程序（`ps -A`），形如 `{pid, name}`——這是 `android_backtrace` 的 pid 來源。 | `device`、`filter`（對處理程序名稱的大小寫不敏感子字串） |
 | `android_backtrace` | 要求處理程序傾印自己的堆疊（`kill -3`），再從 `/data/anr/` 讀取產生的 ANR trace。多數未 root 的裝置不允許讀取該目錄，此時工具會降級到當機緩衝區（`logcat -b crash -d`），並誠實報告是哪個引擎作答、它看不到什麼。 | `device`、`pid` 或 `bundle_id` |
@@ -216,3 +216,14 @@ emulator -avd <name> -gpu swiftshader_indirect
 - 完整聲明見 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
 
 **授權條款**：MIT
+
+### OCR: Vision / Tesseract
+
+預設 `auto` 在 macOS 使用 Vision，在 Windows/Linux 使用選用的 Tesseract。使用者須自行安裝執行檔和語言資料，外掛不會自動安裝。TSV 中文字元依行合併，拉丁文保留詞間空格。
+
+- `DSHPLUGIN_ANDROID_OCR_BACKEND`: `auto`, `vision`, `tesseract`.
+- `DSHPLUGIN_ANDROID_TESSERACT_BINARY`: Tesseract executable path.
+- `DSHPLUGIN_ANDROID_TESSERACT_LANGUAGES`: `eng+chi_sim`.
+- `DSHPLUGIN_ANDROID_TESSERACT_DATA_DIR`: Optional language-model directory.
+
+[Tesseract CLI](https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html)

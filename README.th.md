@@ -73,9 +73,9 @@ DSH Android มอบอุปกรณ์ Android เครื่องจร�
 
 | เครื่องมือ | หน้าที่ | พารามิเตอร์หลัก |
 | --- | --- | --- |
-| `android_find_text` | OCR หน้าจอปัจจุบันด้วยตัวช่วย Vision ที่ปลั๊กอินคอมไพล์ไว้ (การจดจำแม่นยำ zh-Hans + en-US) ใช้เมื่อ UI ทรีว่างหรือเสื่อม สำหรับข้อความที่วาดเป็นกราฟิก (ตัวเลขแบดจ์ ราคาที่ฝังในภาพ) หรือเพื่อตรวจสอบสิ่งที่อยู่บนจออย่างอิสระ คืนค่า `{device, size, items:[{text, confidence, rect}]}` โดย rect คือกล่อง**พิกเซล**ที่มีจุดกำเนิดซ้ายบน เรียงตามความมั่นใจ และจำกัดไว้ที่ ~40 KB ใช้ได้บนโฮสต์ macOS เท่านั้น | `device`, `query` (สตริงย่อยไม่แยกตัวพิมพ์ใหญ่-เล็ก), `min_confidence` (ค่าเริ่มต้น 0.3) |
-| `android_tap_text` | OCR หน้าจอปัจจุบันแล้วแตะกึ่งกลางของข้อความที่ตรงที่สุด — กฎ ตรงทั้งหมด → มีอยู่ → รายชื่อผู้สมัคร ชุดเดียวกับ `android_tap_element` สำหรับข้อความที่ UI ทรีมองไม่เห็น กึ่งกลางพิกเซลที่ตรงกันจะถูกนอร์มัลไลซ์เทียบกับขนาดเฟรมแล้วส่งเป็นการแตะ หลัง ~300 ms สกรีนช็อตใหม่จะแสดงผลลัพธ์ ใช้ได้บนโฮสต์ macOS เท่านั้น | `device`, `query` (จำเป็น), `min_confidence`, `expect_text`, `expect_gone` |
-| `android_wait_for` | รอจนกว่าข้อความจะปรากฏหรือหายไป โดยวนตรวจผ่านไปป์ไลน์จับภาพ + OCR ชุดเดียวกันทุก 600 ms จนเงื่อนไขเป็นจริงหรือหมดเวลา (ค่าเริ่มต้น 8 วินาที สูงสุด 60 วินาที) การหมดเวลาคือคำตอบปกติ `matched:false` ไม่ใช่ข้อผิดพลาด ใช้ได้บนโฮสต์ macOS เท่านั้น | `device`, `text` (จำเป็น), `mode` (`appear`/`disappear`), `timeout_ms`, `min_confidence` |
+| `android_find_text` | รู้จำหน้าจอปัจจุบันด้วย OCR ที่เลือก คืนกล่องพิกเซลจากมุมซ้ายบน เรียงตามความมั่นใจ สูงสุด 40 KB | `serial`, `query` (สตริงย่อยไม่แยกตัวพิมพ์ใหญ่-เล็ก), `min_confidence` (ค่าเริ่มต้น 0.3) |
+| `android_tap_text` | ค้นหาข้อความตรงทั้งหมดก่อนแล้วจึงบางส่วน หากกำกวมจะแสดงตัวเลือก แตะศูนย์กลางพิกเซลที่รู้จำโดยตรงแล้วจับภาพผลลัพธ์ | `serial`, `query` (จำเป็น), `min_confidence`, `expect_text`, `expect_gone` |
+| `android_wait_for` | รอข้อความปรากฏหรือหายไป ค่าเริ่มต้น 8 วินาที สูงสุด 60 วินาที หมดเวลาคืน `matched:false` | `serial`, `text` (จำเป็น), `mode` (`appear`/`disappear`), `timeout_ms`, `min_confidence` |
 | `android_logs` | อ่านสิ่งที่อุปกรณ์บันทึกไว้: `snapshot` (`logcat -d -v time` ในช่วงเวลาล่าสุด ค่าเริ่มต้น 2m) หรือ `follow` (การจับสดแบบมีขอบเขตตาม `duration_seconds` ค่าเริ่มต้น 10 สูงสุด 60 — ไม่มีวันเป็นสตรีมค้าง) กรองให้เหลือแอปเดียวด้วย `bundle_id` (ชื่อแพ็กเกจ Android ที่แก้ไขเป็น pid ของมัน) เอาต์พุตจำกัดไว้ที่ ~300 บรรทัด / 30 KB พร้อมคำใบ้ให้แคบลง | `device`, `mode` (`snapshot`/`follow`), `duration`, `duration_seconds`, `bundle_id`, `grep` |
 | `android_processes` | แสดงรายการโพรเซสที่กำลังทำงานบนอุปกรณ์ (`ps -A`) เป็น `{pid, name}` — แหล่ง pid สำหรับ `android_backtrace` | `device`, `filter` (สตริงย่อยไม่แยกตัวพิมพ์ใหญ่-เล็กบนชื่อโพรเซส) |
 | `android_backtrace` | สั่งให้โพรเซสดัมป์สแตกของมัน (`kill -3`) แล้วอ่าน ANR trace ที่ได้จาก `/data/anr/` อุปกรณ์ที่ไม่ได้รูทส่วนใหญ่ปฏิเสธไดเรกทอรีนั้น เครื่องมือจึงลดระดับไปใช้บัฟเฟอร์แครช (`logcat -b crash -d`) และรายงานตามจริงว่าเอนจินใดเป็นผู้ตอบและมันมองไม่เห็นอะไรบ้าง | `device`, `pid` หรือ `bundle_id` |
@@ -218,3 +218,14 @@ emulator -avd <name> -gpu swiftshader_indirect
 - ดูประกาศฉบับเต็มที่ [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)
 
 **ใบอนุญาต**: MIT
+
+### OCR: Vision / Tesseract
+
+ค่าเริ่มต้น `auto` ใช้ Vision บน macOS และ Tesseract แบบเลือกติดตั้งบน Windows/Linux ผู้ใช้ต้องติดตั้งโปรแกรมและข้อมูลภาษาเอง ตัวอักษรจีนรวมตามบรรทัด TSV และคงช่องว่างระหว่างคำละติน
+
+- `DSHPLUGIN_ANDROID_OCR_BACKEND`: `auto`, `vision`, `tesseract`.
+- `DSHPLUGIN_ANDROID_TESSERACT_BINARY`: Tesseract executable path.
+- `DSHPLUGIN_ANDROID_TESSERACT_LANGUAGES`: `eng+chi_sim`.
+- `DSHPLUGIN_ANDROID_TESSERACT_DATA_DIR`: Optional language-model directory.
+
+[Tesseract CLI](https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html)

@@ -73,9 +73,9 @@ DSH Android는 대화 안에서 에이전트에게 진짜 Android 기기를 건�
 
 | 도구 | 역할 | 주요 매개변수 |
 | --- | --- | --- |
-| `android_find_text` | 플러그인이 직접 컴파일한 Vision 헬퍼로 **현재** 화면을 OCR합니다(accurate 인식, zh-Hans + en-US). UI 트리가 비어 있거나 부실할 때, 텍스트가 그래픽으로 그려져 있을 때(배지 숫자, 이미지에 구워진 가격), 또는 화면에 무엇이 있는지 독립적으로 확인하고 싶을 때 사용하세요. `{device, size, items:[{text, confidence, rect}]}`를 반환하며 rect는 좌상단 원점의 **픽셀** 박스이고, 신뢰도 순으로 정렬되어 약 40 KB에서 잘립니다. macOS 호스트 전용. | `device`, `query`(대소문자 구분 없는 부분 문자열), `min_confidence`(기본값 0.3) |
-| `android_tap_text` | **현재** 화면을 OCR하고 가장 잘 맞는 텍스트의 중심을 탭합니다 — 정확히 일치 → 포함 → 후보 나열이라는 `android_tap_element`와 똑같은 규칙을, UI 트리가 볼 수 없는 텍스트에 적용합니다. 일치한 픽셀 중심을 프레임 크기로 정규화해 탭으로 보내고, 약 300 ms 뒤 새 스크린샷이 결과를 보여줍니다. macOS 호스트 전용. | `device`, `query`(필수), `min_confidence`, `expect_text`, `expect_gone` |
-| `android_wait_for` | 텍스트가 나타나거나 사라질 때까지 기다립니다. 같은 캡처 + OCR 파이프라인을 600 ms마다 폴링하며 조건이 성립하거나 타임아웃될 때까지 계속합니다(기본 8초, 최대 60초). 타임아웃은 오류가 아니라 정상적인 `matched:false` 응답입니다. macOS 호스트 전용. | `device`, `text`(필수), `mode`(`appear`/`disappear`), `timeout_ms`, `min_confidence` |
+| `android_find_text` | 선택한 OCR 백엔드로 현재 화면을 인식하고 왼쪽 위 원점의 픽셀 상자를 신뢰도순으로 반환합니다. 최대 40 KB. | `serial`, `query`(대소문자 구분 없는 부분 문자열), `min_confidence`(기본값 0.3) |
+| `android_tap_text` | 정확한 일치 후 부분 문자열로 찾고, 모호하면 후보를 반환합니다. 인식한 픽셀 중심을 직접 탭한 뒤 결과를 캡처합니다. | `serial`, `query`(필수), `min_confidence`, `expect_text`, `expect_gone` |
+| `android_wait_for` | 텍스트의 등장 또는 사라짐을 기다립니다. 기본 8초, 최대 60초이며 시간 초과는 `matched:false`입니다. | `serial`, `text`(필수), `mode`(`appear`/`disappear`), `timeout_ms`, `min_confidence` |
 | `android_logs` | 기기의 로그를 읽습니다: `snapshot`(최근 구간에 대한 `logcat -d -v time`, 기본 2m) 또는 `follow`(`duration_seconds` 동안의 유한한 실시간 캡처, 기본 10, 최대 60 — 결코 매달린 스트림이 되지 않습니다). `bundle_id`(Android 패키지 이름, pid로 해석됨)로 앱 하나만 필터링할 수 있습니다. 출력은 약 300줄 / 30 KB로 제한되며 범위를 좁히는 힌트가 붙습니다. | `device`, `mode`(`snapshot`/`follow`), `duration`, `duration_seconds`, `bundle_id`, `grep` |
 | `android_processes` | 기기에서 실행 중인 프로세스(`ps -A`)를 `{pid, name}` 형태로 나열합니다 — `android_backtrace`에 넘길 pid의 출처입니다. | `device`, `filter`(프로세스 이름에 대한 대소문자 구분 없는 부분 문자열) |
 | `android_backtrace` | 프로세스에 스택 덤프를 요청하고(`kill -3`) `/data/anr/`에서 생성된 ANR 트레이스를 읽습니다. 루팅되지 않은 대부분의 기기는 그 디렉터리를 거부하므로, 이때는 크래시 버퍼(`logcat -b crash -d`)로 격하되고 어떤 엔진이 답했는지, 무엇을 볼 수 없는지 정직하게 보고합니다. | `device`, `pid` 또는 `bundle_id` |
@@ -218,3 +218,14 @@ emulator -avd <name> -gpu swiftshader_indirect
 - 전체 고지 사항은 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)를 참조하세요.
 
 **라이선스**: MIT
+
+### OCR: Vision / Tesseract
+
+기본 `auto`는 macOS에서 Vision, Windows/Linux에서 선택적 Tesseract를 사용합니다. 실행 파일과 언어 데이터는 사용자가 설치해야 합니다. TSV 중국어 문자는 행별로 결합하며 라틴 단어의 공백은 유지합니다.
+
+- `DSHPLUGIN_ANDROID_OCR_BACKEND`: `auto`, `vision`, `tesseract`.
+- `DSHPLUGIN_ANDROID_TESSERACT_BINARY`: Tesseract executable path.
+- `DSHPLUGIN_ANDROID_TESSERACT_LANGUAGES`: `eng+chi_sim`.
+- `DSHPLUGIN_ANDROID_TESSERACT_DATA_DIR`: Optional language-model directory.
+
+[Tesseract CLI](https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html)

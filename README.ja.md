@@ -73,9 +73,9 @@ DSH Android は、会話の中でエージェントに本物の Android デバ�
 
 | ツール | 機能 | 主なパラメータ |
 | --- | --- | --- |
-| `android_find_text` | プラグインが自前でコンパイルした Vision ヘルパーで**現在の**画面を OCR します（accurate 認識、zh-Hans + en-US）。UI ツリーが空または退化しているとき、テキストがグラフィックとして描かれているとき（バッジの数字、画像に焼き込まれた価格）、あるいは画面の内容を独立に検証したいときに使います。`{device, size, items:[{text, confidence, rect}]}` を返し、rect は左上原点の**ピクセル**矩形で、信頼度順にソートされ約 40 KB で打ち切られます。macOS ホストのみ。 | `device`、`query`（大文字小文字を区別しない部分一致）、`min_confidence`（既定 0.3） |
-| `android_tap_text` | **現在の**画面を OCR し、最良のテキスト一致の中心をタップします——完全一致 → 部分一致 → 候補列挙という `android_tap_element` とまったく同じルールで、UI ツリーからは見えないテキストに使えます。一致したピクセル中心はフレームサイズで正規化されてタップとして送られ、約 300 ms 後のスクリーンショットが効果を示します。macOS ホストのみ。 | `device`、`query`（必須）、`min_confidence`、`expect_text`、`expect_gone` |
-| `android_wait_for` | テキストが現れるまたは消えるまで待機します。同じキャプチャ + OCR パイプラインを 600 ms ごとにポーリングし、条件が成立するかタイムアウトするまで続けます（既定 8 秒、最大 60 秒）。タイムアウトは正常な `matched:false` という答えであり、エラーではありません。macOS ホストのみ。 | `device`、`text`（必須）、`mode`（`appear`/`disappear`）、`timeout_ms`、`min_confidence` |
+| `android_find_text` | 選択した OCR バックエンドで現在の画面を認識し、左上原点のピクセル矩形を信頼度順で返します。上限 40 KB。 | `serial`、`query`（大文字小文字を区別しない部分一致）、`min_confidence`（既定 0.3） |
+| `android_tap_text` | 完全一致、部分一致の順でテキストを検索し、曖昧なら候補を返します。認識したピクセル中心を直接タップし、結果を撮影します。 | `serial`、`query`（必須）、`min_confidence`、`expect_text`、`expect_gone` |
+| `android_wait_for` | 文字の出現・消失を待ちます。既定 8 秒、最大 60 秒。タイムアウトは `matched:false` です。 | `serial`、`text`（必須）、`mode`（`appear`/`disappear`）、`timeout_ms`、`min_confidence` |
 | `android_logs` | デバイスのログを読みます: `snapshot`（直近のウィンドウに対する `logcat -d -v time`、既定 2m）または `follow`（`duration_seconds` の間だけ有界にライブ取得。既定 10、最大 60——ぶら下がり続けるストリームには決してなりません）。`bundle_id`（Android のパッケージ名。pid に解決されます）で 1 つのアプリに絞り込めます。出力は約 300 行 / 30 KB で打ち切られ、絞り込みのヒントが付きます。 | `device`、`mode`（`snapshot`/`follow`）、`duration`、`duration_seconds`、`bundle_id`、`grep` |
 | `android_processes` | デバイスで実行中のプロセス（`ps -A`）を `{pid, name}` として列挙します——`android_backtrace` に渡す pid の入手元です。 | `device`、`filter`（プロセス名に対する大文字小文字を区別しない部分一致） |
 | `android_backtrace` | プロセスに自身のスタックをダンプさせ（`kill -3`）、生成された ANR トレースを `/data/anr/` から読み取ります。root 化されていない多くのデバイスはこのディレクトリを拒否するため、その場合はクラッシュバッファ（`logcat -b crash -d`）に縮退し、どのエンジンが答えたのか、何が見えていないのかを正直に報告します。 | `device`、`pid` または `bundle_id` |
@@ -218,3 +218,14 @@ emulator -avd <name> -gpu swiftshader_indirect
 - 完全な通知は [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) を参照してください。
 
 **ライセンス**: MIT
+
+### OCR: Vision / Tesseract
+
+既定の `auto` は macOS で Vision、Windows/Linux で任意の Tesseract を使います。実行ファイルと言語データは利用者がインストールします。TSV の中国語文字は行内で結合し、ラテン文字の単語間スペースは保持します。
+
+- `DSHPLUGIN_ANDROID_OCR_BACKEND`: `auto`, `vision`, `tesseract`.
+- `DSHPLUGIN_ANDROID_TESSERACT_BINARY`: Tesseract executable path.
+- `DSHPLUGIN_ANDROID_TESSERACT_LANGUAGES`: `eng+chi_sim`.
+- `DSHPLUGIN_ANDROID_TESSERACT_DATA_DIR`: Optional language-model directory.
+
+[Tesseract CLI](https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html)

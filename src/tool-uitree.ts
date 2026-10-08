@@ -80,7 +80,7 @@ export const TAP_SETTLE_MS = 300
  */
 export const TAP_EXPECTATION_BUDGET_MS = 4000
 
-/** Interval between OCR polls (screencap + Vision, ~0.6 s per round trip). */
+/** Interval between OCR polls (capture + the selected OCR backend). */
 export const OCR_POLL_INTERVAL_MS = 600
 
 /**
@@ -361,7 +361,7 @@ export interface OcrPollOutcome {
   item?: OcrItem
 }
 
-/** Resolve the compiled Vision helper and OCR one PNG into parsed items. */
+/** Resolve the selected OCR backend and recognize one PNG into parsed items. */
 export async function runOcr(
   tool: string,
   imagePath: string,
@@ -371,7 +371,7 @@ export async function runOcr(
   const binary = await ensureOcrBinary()
   if (!binary.available) {
     throw new Error(
-      `${tool}: the Vision OCR helper is unavailable`
+      `${tool}: the OCR backend is unavailable`
       + `${binary.reason === undefined ? '' : ` (${binary.reason})`}; ${binary.installHint}`,
     )
   }

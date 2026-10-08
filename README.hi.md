@@ -73,9 +73,9 @@ DSH Android एजेंट को बातचीत के भीतर एक
 
 | टूल | क्या करता है | मुख्य पैरामीटर |
 | --- | --- | --- |
-| `android_find_text` | प्लगइन द्वारा कंपाइल किए गए Vision हेल्पर से वर्तमान स्क्रीन का OCR करता है (सटीक पहचान, zh-Hans + en-US)। इसका उपयोग तब करें जब UI ट्री खाली या विकृत हो, ग्राफ़िक के रूप में रेंडर हुए टेक्स्ट के लिए (बैज गिनती, इमेज में पकी हुई क़ीमतें), या स्क्रीन पर क्या है इसकी स्वतंत्र पुष्टि के लिए। `{device, size, items:[{text, confidence, rect}]}` लौटाता है जहाँ rect ऊपर-बाएँ मूल बिंदु वाले **पिक्सल** बॉक्स हैं, confidence के क्रम में और ~40 KB पर सीमित। केवल macOS होस्ट। | `device`, `query` (केस-इनसेंसिटिव सबस्ट्रिंग), `min_confidence` (डिफ़ॉल्ट 0.3) |
-| `android_tap_text` | वर्तमान स्क्रीन का OCR करता है और सबसे बेहतर टेक्स्ट मिलान के केंद्र पर टैप करता है — वही सटीक → समाहित → उम्मीदवार-सूची नियम जो `android_tap_element` में हैं, उस टेक्स्ट के लिए जो UI ट्री को दिखता ही नहीं। मिले हुए पिक्सल केंद्र को फ़्रेम आकार के सापेक्ष सामान्यीकृत करके टैप के रूप में भेजा जाता है; ~300 ms बाद एक ताज़ा स्क्रीनशॉट प्रभाव दिखाता है। केवल macOS होस्ट। | `device`, `query` (आवश्यक), `min_confidence`, `expect_text`, `expect_gone` |
-| `android_wait_for` | प्रतीक्षा करता है जब तक टेक्स्ट प्रकट या ग़ायब न हो जाए, हर 600 ms पर वही कैप्चर + OCR पाइपलाइन पोल करते हुए, जब तक शर्त पूरी न हो या टाइमआउट समाप्त न हो जाए (डिफ़ॉल्ट 8 s, अधिकतम 60 s)। टाइमआउट एक सामान्य `matched:false` उत्तर है, कभी एरर नहीं। केवल macOS होस्ट। | `device`, `text` (आवश्यक), `mode` (`appear`/`disappear`), `timeout_ms`, `min_confidence` |
+| `android_find_text` | चुने गए OCR बैकएंड से वर्तमान स्क्रीन पहचानता है। ऊपर-बाएँ मूल बिंदु वाले पिक्सल बॉक्स confidence क्रम में लौटाता है, अधिकतम 40 KB। | `serial`, `query` (केस-इनसेंसिटिव सबस्ट्रिंग), `min_confidence` (डिफ़ॉल्ट 0.3) |
+| `android_tap_text` | पहले सटीक और फिर आंशिक टेक्स्ट मिलान खोजता है; अस्पष्ट होने पर विकल्प लौटाता है। पहचाने गए पिक्सल केंद्र पर सीधे टैप करके परिणाम कैप्चर करता है। | `serial`, `query` (आवश्यक), `min_confidence`, `expect_text`, `expect_gone` |
+| `android_wait_for` | टेक्स्ट आने या हटने की प्रतीक्षा करता है: डिफ़ॉल्ट 8 सेकंड, अधिकतम 60 सेकंड। टाइमआउट पर `matched:false` मिलता है। | `serial`, `text` (आवश्यक), `mode` (`appear`/`disappear`), `timeout_ms`, `min_confidence` |
 | `android_logs` | डिवाइस जो लॉग करता है उसे पढ़ता है: `snapshot` (हाल की अवधि पर `logcat -d -v time`, डिफ़ॉल्ट 2m) या `follow` (`duration_seconds` के लिए सीमित लाइव कैप्चर, डिफ़ॉल्ट 10, अधिकतम 60 — कभी लटकती हुई स्ट्रीम नहीं)। `bundle_id` (Android पैकेज नाम, जो उसकी pid में हल होता है) से किसी एक ऐप तक फ़िल्टर करें। आउटपुट ~300 पंक्तियों / 30 KB पर सीमित है, साथ में दायरा घटाने का संकेत। | `device`, `mode` (`snapshot`/`follow`), `duration`, `duration_seconds`, `bundle_id`, `grep` |
 | `android_processes` | डिवाइस पर चल रही प्रोसेस सूचीबद्ध करता है (`ps -A`) `{pid, name}` के रूप में — `android_backtrace` के लिए pid का स्रोत। | `device`, `filter` (प्रोसेस नाम पर केस-इनसेंसिटिव सबस्ट्रिंग) |
 | `android_backtrace` | प्रोसेस से उसके स्टैक डंप करने को कहता है (`kill -3`) और `/data/anr/` से बनी ANR ट्रेस पढ़ता है। ज़्यादातर बिना-रूट डिवाइस उस निर्देशिका तक पहुँच नहीं देते, इसलिए टूल क्रैश बफ़र (`logcat -b crash -d`) पर उतर आता है और ईमानदारी से बताता है कि किस इंजन ने उत्तर दिया और वह क्या नहीं देख सकता। | `device`, `pid` या `bundle_id` |
@@ -218,3 +218,14 @@ emulator -avd <name> -gpu swiftshader_indirect
 - पूरी सूचनाओं के लिए [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) देखें।
 
 **लाइसेंस**: MIT
+
+### OCR: Vision / Tesseract
+
+डिफ़ॉल्ट `auto` macOS पर Vision और Windows/Linux पर वैकल्पिक Tesseract चुनता है। बाइनरी और भाषा डेटा उपयोगकर्ता को स्थापित करने होते हैं। TSV के चीनी अक्षर पंक्ति अनुसार जुड़ते हैं; लैटिन शब्दों के बीच रिक्त स्थान रहते हैं।
+
+- `DSHPLUGIN_ANDROID_OCR_BACKEND`: `auto`, `vision`, `tesseract`.
+- `DSHPLUGIN_ANDROID_TESSERACT_BINARY`: Tesseract executable path.
+- `DSHPLUGIN_ANDROID_TESSERACT_LANGUAGES`: `eng+chi_sim`.
+- `DSHPLUGIN_ANDROID_TESSERACT_DATA_DIR`: Optional language-model directory.
+
+[Tesseract CLI](https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html)
