@@ -982,7 +982,8 @@ if (lib !== undefined) {
     const binary = resolveOcrBinary()
     const ok = process.platform === 'darwin'
       ? typeof binary.available === 'boolean' && binary.installHint === OCR_INSTALL_HINT
-      : binary.available === false && /macOS host/.test(binary.reason ?? '') && /android_ui_tree/.test(binary.reason ?? '')
+      : binary.backend === 'tesseract' && typeof binary.available === 'boolean'
+        && (binary.available ? typeof binary.command === 'string' : /Tesseract/.test(binary.reason ?? ''))
     step(`resolveOcrBinary degrades explicitly on ${process.platform}`, ok, binary.reason?.slice(0, 90) ?? binary.source)
     // The legacy DSH_-prefixed names must keep steering resolution until 1.0: a
   // user whose shell already exports them should not lose their override to a

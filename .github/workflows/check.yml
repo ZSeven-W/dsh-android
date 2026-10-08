@@ -9,8 +9,8 @@
 #
 # Unlike the iOS twin there is no macOS-only job for the core: adb is the only
 # toolchain the plugin talks to and it runs everywhere, so Linux is the honest
-# home for both gates. (The Vision-OCR tools DO need a macOS host; their
-# host-side compile path is not exercised here — see the README.)
+# home for both gates. Optional Tesseract OCR is additionally executed on
+# native Windows/Linux runners; the Vision compile path remains macOS-only.
 #
 # DSH_ANDROID_SMOKE_SKIP_DEVICE=1 keeps the first two jobs deterministic. A
 # green check is therefore NOT a claim that a phone works: the physical-device
@@ -30,6 +30,58 @@ permissions:
   contents: read
 
 jobs:
+  tesseract:
+    name: Native OCR / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - name: Install Linux Tesseract
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y tesseract-ocr
+      - name: Install Windows Tesseract
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install tesseract --yes --no-progress
+          $dshTessExe = Join-Path $env:ProgramFiles 'Tesseract-OCR/tesseract.exe'
+          if (-not (Test-Path $dshTessExe)) { throw 'Tesseract executable missing' }
+          "DSHPLUGIN_ANDROID_TESSERACT_BINARY=$dshTessExe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Fetch pinned language data
+        shell: pwsh
+        run: |
+          $dshTessDir = Join-Path $env:RUNNER_TEMP 'dsh-tessdata'
+          New-Item -ItemType Directory -Force -Path $dshTessDir | Out-Null
+          $dshTessRevision = '87416418657359cb625c412a48b6e1d6d41c29bd'
+          $dshTessDigests = @{
+            eng = '7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2'
+            chi_sim = 'a5fcb6f0db1e1d6d8522f39db4e848f05984669172e584e8d76b6b3141e1f730'
+          }
+          foreach ($dshLang in $dshTessDigests.Keys) {
+            $dshModelPath = Join-Path $dshTessDir "$dshLang.traineddata"
+            Invoke-WebRequest "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/$dshTessRevision/$dshLang.traineddata" -OutFile $dshModelPath
+            if ((Get-FileHash $dshModelPath -Algorithm SHA256).Hash.ToLower() -ne $dshTessDigests[$dshLang]) { throw "Language digest mismatch: $dshLang" }
+          }
+          "DSHPLUGIN_ANDROID_TESSERACT_DATA_DIR=$dshTessDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Native Chinese/Latin recognition and pixel tool delivery
+        run: node scripts/dev-tesseract-native-smoke.mjs
+      - name: Stream target liveness regression
+        run: node scripts/dev-target-resolution-smoke.mjs
+
   static:
     name: Node 24 / build + static smokes
     runs-on: ubuntu-latest

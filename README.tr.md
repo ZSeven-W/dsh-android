@@ -73,9 +73,9 @@ Koordinatlar her yerde **akıtılan karenin 0..1 aralığında normalleştirilmi
 
 | Araç | Ne yapar | Temel parametreler |
 | --- | --- | --- |
-| `android_find_text` | GEÇERLİ ekranı, eklentinin derlediği Vision yardımcısıyla OCR'lar (isabetli tanıma, zh-Hans + en-US). UI ağacı boş veya bozulmuşken, grafik olarak çizilen metinler için (rozet sayıları, görsellere gömülü fiyatlar) ya da ekrandakini bağımsızca doğrulamak için kullanın. `{device, size, items:[{text, confidence, rect}]}` döndürür; rect'ler sol üst başlangıçlı **piksel** kutularıdır, güvene göre sıralıdır ve çıktı ~40 KB ile sınırlıdır. Yalnızca macOS ana makine. | `device`, `query` (büyük/küçük harfe duyarsız alt dize), `min_confidence` (varsayılan 0.3) |
-| `android_tap_text` | GEÇERLİ ekranı OCR'lar ve en iyi metin eşleşmesinin merkezine dokunur — UI ağacının göremediği metinler için, `android_tap_element` ile aynı tam → içerme → aday listesi kuralları. Eşleşen piksel merkezi kare boyutuna göre normalleştirilir ve dokunuş olarak gönderilir; ~300 ms sonra taze bir ekran görüntüsü etkiyi gösterir. Yalnızca macOS ana makine. | `device`, `query` (zorunlu), `min_confidence`, `expect_text`, `expect_gone` |
-| `android_wait_for` | Bir metnin belirmesini veya kaybolmasını bekler; koşul sağlanana ya da süre dolana kadar (varsayılan 8 sn, en çok 60 sn) aynı yakalama + OCR hattını her 600 ms'de bir yoklar. Zaman aşımı normal bir `matched:false` yanıtıdır, asla hata değildir. Yalnızca macOS ana makine. | `device`, `text` (zorunlu), `mode` (`appear`/`disappear`), `timeout_ms`, `min_confidence` |
+| `android_find_text` | Seçilen OCR arka ucuyla geçerli ekranı tanır. Sol üst kökenli piksel kutularını güven sırasıyla, en çok 40 KB döndürür. | `serial`, `query` (büyük/küçük harfe duyarsız alt dize), `min_confidence` (varsayılan 0.3) |
+| `android_tap_text` | Önce tam, sonra alt dize eşleşmesi arar; belirsizse adayları döndürür. Tanınan piksel merkezine doğrudan dokunur ve sonucu yakalar. | `serial`, `query` (zorunlu), `min_confidence`, `expect_text`, `expect_gone` |
+| `android_wait_for` | Metnin belirmesini veya kaybolmasını bekler: varsayılan 8 sn, en çok 60 sn. Zaman aşımı `matched:false` döndürür. | `serial`, `text` (zorunlu), `mode` (`appear`/`disappear`), `timeout_ms`, `min_confidence` |
 | `android_logs` | Cihazın günlüğe yazdıklarını okur: `snapshot` (yakın bir pencere üzerinde `logcat -d -v time`, varsayılan 2m) veya `follow` (`duration_seconds` kadar sınırlı canlı yakalama, varsayılan 10, en çok 60 — asla asılı kalan bir akış değil). `bundle_id` (pid'ine çözümlenen Android paket adı) ile tek bir uygulamaya süzün. Çıktı ~300 satır / 30 KB ile sınırlıdır ve daraltma ipucu içerir. | `device`, `mode` (`snapshot`/`follow`), `duration`, `duration_seconds`, `bundle_id`, `grep` |
 | `android_processes` | Cihazda çalışan süreçleri (`ps -A`) `{pid, name}` olarak listeler — `android_backtrace` için pid kaynağıdır. | `device`, `filter` (süreç adı üzerinde büyük/küçük harfe duyarsız alt dize) |
 | `android_backtrace` | Sürecin yığınlarını dökmesini ister (`kill -3`) ve oluşan ANR izini `/data/anr/` altından okur. Root'lanmamış cihazların çoğu bu dizini reddeder, bu yüzden araç çökme arabelleğine (`logcat -b crash -d`) düşer ve hangi motorun yanıt verdiğini ve neyi göremediğini dürüstçe bildirir. | `device`, `pid` veya `bundle_id` |
@@ -218,3 +218,14 @@ ayarlayın. Fiziksel cihazlar asla etkilenmez.
 - Bildirimlerin tamamı için [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) dosyasına bakın.
 
 **Lisans**: MIT
+
+### OCR: Vision / Tesseract
+
+Varsayılan `auto`, macOS üzerinde Vision, Windows/Linux üzerinde isteğe bağlı Tesseract kullanır. Program ve dil verilerini kullanıcı kurar. Çin karakterleri TSV satırına göre birleştirilir; Latin sözcük aralıkları korunur.
+
+- `DSHPLUGIN_ANDROID_OCR_BACKEND`: `auto`, `vision`, `tesseract`.
+- `DSHPLUGIN_ANDROID_TESSERACT_BINARY`: Tesseract executable path.
+- `DSHPLUGIN_ANDROID_TESSERACT_LANGUAGES`: `eng+chi_sim`.
+- `DSHPLUGIN_ANDROID_TESSERACT_DATA_DIR`: Optional language-model directory.
+
+[Tesseract CLI](https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html)

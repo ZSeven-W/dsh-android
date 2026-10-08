@@ -1,5 +1,5 @@
 /**
- * Vision OCR helper resolution, compilation, execution, and coordinate
+ * Vision/Tesseract OCR resolution, compilation, execution, and coordinate
  * conversion — the backend of `android_find_text` / `android_tap_text` /
  * `android_wait_for`.
  *
@@ -21,8 +21,9 @@
  * re-checked on every resolution, so a corrupted artifact is rebuilt.
  * The helper runs on the HOST, on a PNG the plugin already captured through
  * `adb exec-out screencap`, so it needs nothing from the device — but it does
- * need macOS: Vision is an Apple framework. On any other host the tools fail
- * with an explanatory error instead of pretending to degrade.
+ * need macOS for Vision. Other hosts use an optional installed Tesseract
+ * executable and requested language data. Backend selection is explicit or
+ * automatic; no binary or language data is installed by a tool invocation.
  *
  * COORDINATE SPACE: unlike the iOS twin this module has exactly ONE space.
  * The helper emits boxes in IMAGE PIXELS (origin top-left), the Android
@@ -49,9 +50,10 @@ import { fileURLToPath } from 'node:url'
 import { pluginEnv } from './plugin-env.js'
 
 /** Install hint appended to every helper-unavailable tool error. */
-export const OCR_INSTALL_HINT = 'the plugin compiles its bundled Vision OCR helper with swiftc on first use — '
-  + 'install Xcode (or the Command Line Tools: run "xcode-select --install") so android_find_text / '
-  + 'android_tap_text / android_wait_for can run'
+export const OCR_INSTALL_HINT = 'android_find_text / android_tap_text / android_wait_for use Vision on macOS '
+  + '(Xcode or Command Line Tools) or an optional installed Tesseract executable. '
+  + 'For Tesseract, install eng + chi_sim language data or configure DSHPLUGIN_ANDROID_TESSERACT_LANGUAGES. '
+  + 'Use DSHPLUGIN_ANDROID_OCR_BACKEND=auto|vision|tesseract to select a backend'
 
 /** Cache base dir; `DSHPLUGIN_ANDROID_OCR_DIR` overrides it (tests/CI). */
 const OCR_CACHE_BASE = join(homedir(), 'Library', 'Caches', 'dsh-android', 'bin', 'ocr')
@@ -76,6 +78,9 @@ export interface OcrBinary {
   installHint: string
   /** True when everything needed to compile the bundled helper exists. */
   compilable?: boolean
+  backend?: 'vision' | 'tesseract'
+  languages?: string
+  dataDir?: string
 }
 
 /** One OCR box: image pixels, origin top-left. */
@@ -99,20 +104,20 @@ export interface PixelSize {
   height: number
 }
 
-function isExecutableFile(path: string): boolean {
+function isExecutableFile(path: string, platform: NodeJS.Platform = process.platform): boolean {
   try {
     const info = statSync(path)
-    return info.isFile() && (info.mode & 0o111) !== 0
+    return info.isFile() && (platform === 'win32' || (info.mode & 0o111) !== 0)
   } catch {
     return false
   }
 }
 
-function findOnPath(command: string): string | undefined {
-  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+function findOnPath(command: string, platform: NodeJS.Platform = process.platform): string | undefined {
+  for (const dir of (process.env.PATH ?? '').split(platform === 'win32' ? ';' : delimiter)) {
     if (dir === '') continue
     const candidate = join(dir, command)
-    if (isExecutableFile(candidate)) return candidate
+    if (isExecutableFile(candidate, platform)) return candidate
   }
   return undefined
 }
@@ -174,7 +179,7 @@ function resolveSwiftc(): { command?: string; reason?: string } {
   }
   const onPath = findOnPath('swiftc')
   if (onPath !== undefined) return { command: onPath }
-  const known = SWIFTC_CANDIDATES.find(isExecutableFile)
+  const known = SWIFTC_CANDIDATES.find(path => isExecutableFile(path))
   if (known !== undefined) return { command: known }
   return { reason: 'swiftc (the Swift compiler) was not found on PATH — install Xcode or the Command Line Tools' }
 }
@@ -202,14 +207,12 @@ function validCachedBinary(sourceSha256: string): string | undefined {
  * probe + cache digest validation. Never compiles; `ensureOcrBinary()` adds
  * the compile-on-first-use step.
  */
-export function resolveOcrBinary(): OcrBinary {
-  if (process.platform !== 'darwin') {
+function resolveVisionBinary(platform: NodeJS.Platform): OcrBinary {
+  if (platform !== 'darwin') {
     return {
       available: false,
       source: 'unavailable',
-      reason: `OCR needs the Vision framework of a macOS host, and this host runs ${process.platform} — `
-        + 'the device side is pure adb, but the recognition itself happens on the machine running DSH. '
-        + 'Use android_ui_tree / android_tap_element (uiautomator works on every host) instead',
+      reason: `the Vision OCR backend needs a macOS host; this host runs ${platform}. Select Tesseract for this host`,
       installHint: OCR_INSTALL_HINT,
     }
   }
@@ -245,6 +248,46 @@ export function resolveOcrBinary(): OcrBinary {
   }
 }
 
+function hasVisionOverride(): boolean {
+  return ['ANDROID_OCR_SWIFT', 'ANDROID_SWIFTC'].some(name => (pluginEnv(name) ?? '').trim() !== '')
+}
+
+function resolveTesseractBinary(platform: NodeJS.Platform): OcrBinary {
+  const unavailable = (reason: string): OcrBinary => ({ available: false, source: 'unavailable', backend: 'tesseract', reason, installHint: OCR_INSTALL_HINT })
+  const languages = (pluginEnv('ANDROID_TESSERACT_LANGUAGES') ?? '').trim() || 'eng+chi_sim'
+  if (!/^[A-Za-z0-9_-]+(?:\+[A-Za-z0-9_-]+)*$/.test(languages)) {
+    return unavailable('DSHPLUGIN_ANDROID_TESSERACT_LANGUAGES must contain language identifiers joined by + (for example eng+chi_sim)')
+  }
+  const explicit = (pluginEnv('ANDROID_TESSERACT_BINARY') ?? '').trim()
+  const name = platform === 'win32' ? 'tesseract.exe' : 'tesseract'
+  const known = platform === 'win32'
+    ? [join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Tesseract-OCR', name)]
+    : ['/opt/homebrew/bin/tesseract', '/usr/local/bin/tesseract', '/usr/bin/tesseract']
+  const command = explicit !== '' ? explicit : findOnPath(name, platform) ?? known.find(path => isExecutableFile(path, platform))
+  if (command === undefined || !isExecutableFile(command, platform)) {
+    return unavailable(explicit !== ''
+      ? `DSHPLUGIN_ANDROID_TESSERACT_BINARY points at a missing or non-executable file: ${explicit}`
+      : 'Tesseract was not found on PATH or in a standard install location; install it to enable OCR on this host')
+  }
+  const dataDir = (pluginEnv('ANDROID_TESSERACT_DATA_DIR') ?? '').trim()
+  return { available: true, source: 'path', backend: 'tesseract', command, languages,
+    ...(dataDir === '' ? {} : { dataDir }), installHint: OCR_INSTALL_HINT }
+}
+
+/** Prefer Vision on macOS; otherwise use optional host-installed Tesseract. */
+export function resolveOcrBinary(options: { platform?: NodeJS.Platform } = {}): OcrBinary {
+  const platform = options.platform ?? process.platform
+  const backend = (pluginEnv('ANDROID_OCR_BACKEND') ?? '').trim().toLowerCase() || 'auto'
+  if (!['auto', 'vision', 'tesseract'].includes(backend)) {
+    return { available: false, source: 'unavailable', reason: 'DSHPLUGIN_ANDROID_OCR_BACKEND must be auto, vision or tesseract', installHint: OCR_INSTALL_HINT }
+  }
+  if (backend === 'tesseract' || (backend === 'auto' && platform !== 'darwin')) return resolveTesseractBinary(platform)
+  const vision: OcrBinary = { ...resolveVisionBinary(platform), backend: 'vision' }
+  if (backend === 'vision' || vision.available || vision.compilable || hasVisionOverride()) return vision
+  const tesseract = resolveTesseractBinary(platform)
+  return tesseract.available ? tesseract : { ...vision, reason: [vision.reason, tesseract.reason].filter(Boolean).join('; ') }
+}
+
 /** Run the compiled helper. Non-zero exits raise with its stderr/stdout. */
 export function execOcr(
   binary: OcrBinary,
@@ -256,7 +299,11 @@ export function execOcr(
     return Promise.reject(new Error(`the OCR helper is unavailable${binary.reason === undefined ? '' : ` (${binary.reason})`}; ${binary.installHint}`))
   }
   return new Promise((resolve, reject) => {
-    execFile(binary.command!, [imagePath], {
+    const args = binary.backend === 'tesseract'
+      ? [imagePath, 'stdout', '-l', binary.languages ?? 'eng+chi_sim', '--psm', '11',
+          ...(binary.dataDir === undefined ? [] : ['--tessdata-dir', binary.dataDir]), '-c', 'tessedit_create_tsv=1']
+      : [imagePath]
+    execFile(binary.command!, args, {
       timeout: timeoutMs,
       maxBuffer: OCR_MAX_BUFFER_BYTES,
       signal,
@@ -266,7 +313,19 @@ export function execOcr(
         reject(new Error(`OCR helper failed${detail === '' ? '' : `: ${detail}`}`))
         return
       }
-      resolve({ stdout, stderr })
+      // Tesseract can exit 0 after failing one requested language and then
+      // recognize with the remaining models. Do not silently turn a Chinese
+      // request into English-only OCR.
+      if (binary.backend === 'tesseract' && /Failed loading language|couldn't load any languages/i.test(stderr)) {
+        reject(new Error(`Tesseract language data is unavailable: ${stderr.trim()}; ${binary.installHint}`))
+        return
+      }
+      if (binary.backend === 'tesseract') {
+        try {
+          const items = parseTesseractTsv(stdout).map(({ text, confidence, rect }) => ({ text, confidence, ...rect }))
+          resolve({ stdout: JSON.stringify({ items }), stderr })
+        } catch (parseError) { reject(parseError) }
+      } else resolve({ stdout, stderr })
     })
   })
 }
@@ -328,6 +387,25 @@ async function compileOcrHelper(): Promise<string> {
 /** Shared in-flight compile so concurrent tool calls wait on one build. */
 let compilePromise: Promise<string> | undefined
 
+const checkedTesseractLanguages = new Map<string, number>()
+async function ensureTesseractLanguages(binary: OcrBinary): Promise<OcrBinary> {
+  const languages = binary.languages ?? 'eng+chi_sim'
+  const key = JSON.stringify([binary.command, languages, binary.dataDir, process.env.TESSDATA_PREFIX])
+  const checkedAt = checkedTesseractLanguages.get(key)
+  if (checkedAt !== undefined && Date.now() - checkedAt >= 0 && Date.now() - checkedAt < 300_000) return binary
+  const result = await new Promise<{ stdout: string; error?: string }>(resolve => {
+    execFile(binary.command!, ['--list-langs', ...(binary.dataDir === undefined ? [] : ['--tessdata-dir', binary.dataDir])],
+      { timeout: 5_000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => resolve({ stdout,
+        ...(error === null ? {} : { error: stderr.trim() || error.message }) }))
+  })
+  const installed = new Set(result.stdout.split(/\r?\n/).map(s => s.trim()).filter(s => /^[A-Za-z0-9_-]+$/.test(s)))
+  const missing = languages.split('+').filter(language => !installed.has(language))
+  if (result.error !== undefined || missing.length > 0) return { ...binary, available: false, source: 'unavailable',
+    reason: result.error ?? `Tesseract language data is missing: ${missing.join(', ')}` }
+  checkedTesseractLanguages.set(key, Date.now())
+  return binary
+}
+
 /**
  * Resolve the helper, compiling the bundled source into the plugin cache
  * when it is absent (macOS with swiftc only). Resolution-only failure is
@@ -336,6 +414,7 @@ let compilePromise: Promise<string> | undefined
  */
 export async function ensureOcrBinary(): Promise<OcrBinary> {
   const resolved = resolveOcrBinary()
+  if (resolved.available && resolved.backend === 'tesseract') return ensureTesseractLanguages(resolved)
   if (resolved.available || resolved.compilable !== true) return resolved
   if (compilePromise === undefined) {
     compilePromise = compileOcrHelper().catch(error => {
@@ -344,8 +423,66 @@ export async function ensureOcrBinary(): Promise<OcrBinary> {
       compilePromise = undefined
     })
   }
-  await compilePromise
+  try { await compilePromise } catch (error) {
+    if (((pluginEnv('ANDROID_OCR_BACKEND') ?? '').trim().toLowerCase() || 'auto') === 'auto' && !hasVisionOverride()) {
+      const tesseract = resolveTesseractBinary(process.platform)
+      if (tesseract.available) return ensureTesseractLanguages(tesseract)
+    }
+    throw error
+  }
   return resolveOcrBinary()
+}
+
+/** TSV word rows are regrouped by page/block/paragraph/line into UI labels. */
+export function parseTesseractTsv(stdout: string): OcrItem[] {
+  const rows = stdout.replace(/^\uFEFF/, '').split(/\r?\n/)
+  const header = rows.shift()?.split('\t')
+  const expected = ['level', 'page_num', 'block_num', 'par_num', 'line_num', 'word_num', 'left', 'top', 'width', 'height', 'conf', 'text']
+  if (header === undefined || expected.some((name, i) => header[i] !== name)) throw new Error('Tesseract returned an invalid TSV header')
+  type Word = { text: string; confidence: number; x: number; y: number; w: number; h: number; order: number }
+  const lines = new Map<string, Word[]>()
+  const seen = new Set<string>()
+  for (const row of rows) {
+    const fields = row.split('\t')
+    if (fields.length < 12 || fields[0] !== '5') continue
+    if (fields.slice(1, 6).some(value => !/^[1-9]\d*$/.test(value))) continue
+    const ids = fields.slice(1, 6).map(Number)
+    const numeric = fields.slice(6, 11)
+    if (numeric.some(value => value.trim() === '' || !/^-?\d+(?:\.\d+)?$/.test(value))) continue
+    const [x, y, w, h, conf] = numeric.map(Number)
+    const text = fields.slice(11).join('\t').trim()
+    if (text === '' || ids.some(n => !Number.isSafeInteger(n) || n < 1)
+      || [x, y, w, h, conf].some(n => n === undefined || !Number.isFinite(n))
+      || x! < 0 || y! < 0 || w! <= 0 || h! <= 0 || conf! < 0 || conf! > 100) continue
+    const key = ids.slice(0, 4).join(':')
+    const duplicate = key + ':' + fields.slice(5).join('\t')
+    if (seen.has(duplicate)) continue
+    seen.add(duplicate)
+    const words = lines.get(key) ?? []
+    words.push({ text, confidence: conf! / 100, x: x!, y: y!, w: w!, h: h!, order: ids[4]! })
+    lines.set(key, words)
+  }
+  const cjkEnd = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]$/u
+  const cjkStart = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u
+  const items: OcrItem[] = []
+  for (const words of lines.values()) {
+    words.sort((a, b) => a.order - b.order)
+    let text = ''
+    for (const word of words) {
+      const attach = (cjkEnd.test(text) && cjkStart.test(word.text))
+        || /^[.,!?;:，。！？、；：）\]】》」』]/u.test(word.text)
+        || /[(（\[【《「『]$/u.test(text)
+      text += (text === '' || attach ? '' : ' ') + word.text
+    }
+    let x = Infinity, y = Infinity, right = 0, bottom = 0, confidence = 0
+    for (const word of words) {
+      x = Math.min(x, word.x); y = Math.min(y, word.y)
+      right = Math.max(right, word.x + word.w); bottom = Math.max(bottom, word.y + word.h)
+      confidence += word.confidence
+    }
+    items.push({ text, confidence: confidence / words.length, rect: { x, y, w: right - x, h: bottom - y } })
+  }
+  return items.sort((a, b) => b.confidence - a.confidence)
 }
 
 /** Parse the helper's JSON payload into sanitized items (confidence-sorted). */

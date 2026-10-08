@@ -73,9 +73,9 @@ DSH Android даёт агенту настоящее Android-устройств�
 
 | Инструмент | Что делает | Ключевые параметры |
 | --- | --- | --- |
-| `android_find_text` | Делает OCR ТЕКУЩЕГО экрана с помощью собранного плагином помощника Vision (точное распознавание, zh-Hans + en-US). Используйте, когда дерево UI пустое или вырожденное, для текста, отрисованного графикой (цифры бейджей, цены, вшитые в изображения), или чтобы независимо проверить, что на экране. Возвращает `{device, size, items:[{text, confidence, rect}]}`, где rect — **пиксельные** рамки с началом координат слева сверху, отсортированные по уверенности, вывод ограничен ~40 КБ. Только хост macOS. | `device`, `query` (подстрока без учёта регистра), `min_confidence` (по умолчанию 0.3) |
-| `android_tap_text` | Делает OCR ТЕКУЩЕГО экрана и нажимает центр лучшего совпадения текста — те же правила «точное → содержит → список кандидатов», что и у `android_tap_element`, для текста, который дерево UI не видит. Найденный пиксельный центр нормализуется относительно размера кадра и отправляется как нажатие; через ~300 мс свежий скриншот показывает эффект. Только хост macOS. | `device`, `query` (обязателен), `min_confidence`, `expect_text`, `expect_gone` |
-| `android_wait_for` | Ждёт, пока текст появится или исчезнет, опрашивая тот же конвейер снимок + OCR каждые 600 мс, пока условие не выполнится или не истечёт тайм-аут (по умолчанию 8 с, максимум 60 с). Тайм-аут — это нормальный ответ `matched:false`, никогда не ошибка. Только хост macOS. | `device`, `text` (обязателен), `mode` (`appear`/`disappear`), `timeout_ms`, `min_confidence` |
+| `android_find_text` | Распознаёт текущий экран выбранным OCR-движком. Возвращает пиксельные рамки от левого верхнего угла по уверенности, не более 40 КБ. | `serial`, `query` (подстрока без учёта регистра), `min_confidence` (по умолчанию 0.3) |
+| `android_tap_text` | Сначала ищет точное совпадение, затем подстроку; при неоднозначности возвращает кандидатов. Нажимает непосредственно пиксельный центр и снимает результат. | `serial`, `query` (обязателен), `min_confidence`, `expect_text`, `expect_gone` |
+| `android_wait_for` | Ждёт появления или исчезновения текста: 8 с по умолчанию, максимум 60 с. Тайм-аут возвращает `matched:false`. | `serial`, `text` (обязателен), `mode` (`appear`/`disappear`), `timeout_ms`, `min_confidence` |
 | `android_logs` | Читает, что пишет устройство в журнал: `snapshot` (`logcat -d -v time` за недавнее окно, по умолчанию 2m) или `follow` (ограниченный живой захват на `duration_seconds`, по умолчанию 10, максимум 60 — никогда не висящий поток). Фильтруйте по одному приложению через `bundle_id` (имя пакета Android, разрешаемое в его pid). Вывод ограничен ~300 строками / 30 КБ с подсказкой по сужению. | `device`, `mode` (`snapshot`/`follow`), `duration`, `duration_seconds`, `bundle_id`, `grep` |
 | `android_processes` | Перечисляет работающие процессы устройства (`ps -A`) как `{pid, name}` — источник pid для `android_backtrace`. | `device`, `filter` (подстрока без учёта регистра по имени процесса) |
 | `android_backtrace` | Просит процесс выгрузить свои стеки (`kill -3`) и читает получившуюся трассировку ANR из `/data/anr/`. Большинство устройств без root закрывают этот каталог, поэтому инструмент деградирует до буфера сбоев (`logcat -b crash -d`) и честно сообщает, какой движок ответил и чего он не видит. | `device`, `pid` или `bundle_id` |
@@ -218,3 +218,14 @@ emulator -avd <name> -gpu swiftshader_indirect
 - Полный список уведомлений см. в [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 
 **Лицензия**: MIT
+
+### OCR: Vision / Tesseract
+
+По умолчанию `auto` использует Vision на macOS и необязательный Tesseract на Windows/Linux. Пользователь устанавливает программу и языковые данные. Китайские символы объединяются по строкам TSV, пробелы между латинскими словами сохраняются.
+
+- `DSHPLUGIN_ANDROID_OCR_BACKEND`: `auto`, `vision`, `tesseract`.
+- `DSHPLUGIN_ANDROID_TESSERACT_BINARY`: Tesseract executable path.
+- `DSHPLUGIN_ANDROID_TESSERACT_LANGUAGES`: `eng+chi_sim`.
+- `DSHPLUGIN_ANDROID_TESSERACT_DATA_DIR`: Optional language-model directory.
+
+[Tesseract CLI](https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html)

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; 当前插件版本: <code>0.1.0-rc.11</code> &middot; 已在 DSH <code>0.1.5-rc.1</code> 上验证</sub>
+  <sub>npm: <code>@zseven-w/dsh-android</code> &middot; 当前插件版本: <code>0.1.0-rc.12</code> &middot; 已在 DSH <code>0.1.5-rc.1</code> 上验证</sub>
 </p>
 
 <p align="center">
@@ -73,9 +73,9 @@ DSH Android 把一台真实的 Android 设备交给 agent，同时把画面交�
 
 | 工具 | 作用 | 关键参数 |
 | --- | --- | --- |
-| `android_find_text` | 用插件自编译的 Vision 助手对**当前**屏幕做 OCR（accurate 识别，zh-Hans + en-US）。适用于控件树为空或退化、文字被渲染成图形（角标数字、烧进图片的价格），或需要独立验证屏幕内容时。返回 `{device, size, items:[{text, confidence, rect}]}`，rect 是**像素**框、原点左上，按置信度排序，上限约 40 KB。仅 macOS 宿主。 | `device`、`query`（大小写不敏感子串）、`min_confidence`（默认 0.3） |
-| `android_tap_text` | 对**当前**屏幕做 OCR 并点击最佳匹配的中心 —— 歧义规则与 `android_tap_element` 相同（精确 → 包含 → 列候选），用于控件树看不见的文字。匹配到的像素中心按帧尺寸归一化后作为点击发出；约 300 ms 后截图展示效果。仅 macOS 宿主。 | `device`、`query`（必填）、`min_confidence`、`expect_text`、`expect_gone` |
-| `android_wait_for` | 等待文字出现或消失，用与 `android_find_text` 相同的截图 + OCR 管线每 600 ms 轮询一次，直到条件成立或超时（默认 8 s，上限 60 s）。超时是正常的 `matched:false` 答案，绝不是错误。仅 macOS 宿主。 | `device`、`text`（必填）、`mode`（`appear`/`disappear`）、`timeout_ms`、`min_confidence` |
+| `android_find_text` | 用所选 OCR 后端识别当前屏幕，返回按置信度排序的像素框（左上角原点），上限 40 KB。 | `serial`、`query`（大小写不敏感子串）、`min_confidence`（默认 0.3） |
+| `android_tap_text` | 优先精确匹配，再按子串匹配；有歧义时列出候选。直接点击识别框的像素中心，然后截图验证。 | `serial`、`query`（必填）、`min_confidence`、`expect_text`、`expect_gone` |
+| `android_wait_for` | 等待文字出现或消失，默认 8 秒、最多 60 秒；超时返回 `matched:false`。 | `serial`、`text`（必填）、`mode`（`appear`/`disappear`）、`timeout_ms`、`min_confidence` |
 | `android_logs` | 读设备日志：`snapshot`（`logcat -d -v time` 取近期窗口，默认 2m）或 `follow`（限时实况抓取 `duration_seconds`，默认 10，上限 60 —— 绝不挂起）。用 `bundle_id`（Android 包名，会解析成 pid）过滤到单个应用。输出上限约 300 行 / 30 KB，并附收窄提示。 | `device`、`mode`（`snapshot`/`follow`）、`duration`、`duration_seconds`、`bundle_id`、`grep` |
 | `android_processes` | 列出设备上运行的进程（`ps -A`），形如 `{pid, name}` —— 这是 `android_backtrace` 的 pid 来源。 | `device`、`filter`（对进程名的大小写不敏感子串） |
 | `android_backtrace` | 让进程转储自身调用栈（`kill -3`），再从 `/data/anr/` 读取 ANR trace。多数未 root 设备不允许读该目录，此时工具降级到崩溃缓冲区（`logcat -b crash -d`），并**诚实报告**是哪个引擎作答、它看不到什么。 | `device`、`pid` 或 `bundle_id` |
@@ -243,3 +243,14 @@ emulator -avd <名称> -gpu swiftshader_indirect
 - 完整声明见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
 
 **许可**：MIT
+
+### OCR: Vision / Tesseract
+
+默认 `auto` 在 macOS 使用 Vision，在 Windows/Linux 使用可选 Tesseract。Tesseract 和语言数据由使用者安装，插件不会自动安装。TSV 中文字符按行合并，拉丁文保留词间空格。
+
+- `DSHPLUGIN_ANDROID_OCR_BACKEND`: `auto`, `vision`, `tesseract`.
+- `DSHPLUGIN_ANDROID_TESSERACT_BINARY`: 执行文件完整路径。
+- `DSHPLUGIN_ANDROID_TESSERACT_LANGUAGES`: `eng+chi_sim`.
+- `DSHPLUGIN_ANDROID_TESSERACT_DATA_DIR`: 可选语言模型目录。
+
+[Tesseract CLI](https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html)

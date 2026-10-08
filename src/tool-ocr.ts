@@ -1,5 +1,5 @@
 /**
- * Vision-OCR tools: `android_find_text`, `android_tap_text`, `android_wait_for`.
+ * OCR tools: `android_find_text`, `android_tap_text`, `android_wait_for`.
  *
  * The uiautomator hierarchy (tool-uitree.ts) stays the primary observer; these
  * three cover what it cannot see. On Android that gap is wide and common:
@@ -68,7 +68,7 @@ import {
 } from './tool-uitree.js'
 import { IMAGE_REF_SCHEMA, renderJsonWithImage } from './vision.js'
 
-/** Registered Vision-OCR tool names, in registration order. */
+/** Registered OCR tool names, in registration order. */
 export const ANDROID_OCR_TOOL_NAMES = ['android_find_text', 'android_tap_text', 'android_wait_for'] as const
 
 /** Default minimum OCR confidence (0.3 — the useful floor for CJK labels). */
@@ -120,7 +120,7 @@ export interface AndroidTapTextResult {
   rect: OcrRect
   /** Tapped point in image pixels. */
   center: { x: number; y: number }
-  /** The normalized 0..1 coordinates actually sent to the device. */
+  /** Equivalent normalized 0..1 point within the recognition screenshot. */
   tap: { x: number; y: number }
   expected?: OcrExpectationResult
   path: string
@@ -235,7 +235,7 @@ const ocrItemSchema = {
   },
 } as const
 
-/** Create the three Vision-OCR tool definitions bound to one host. */
+/** Create the three OCR tool definitions bound to one host. */
 export function createAndroidOcrTools(host: AndroidToolHost, options: AndroidUiToolsOptions = {}): AndroidOcrTools {
   const vision = options.vision
   const cacheDir = options.cacheDir ?? join(tmpdir(), 'dsh-android')
@@ -243,10 +243,9 @@ export function createAndroidOcrTools(host: AndroidToolHost, options: AndroidUiT
 
   const androidFindText = defineTool({
     name: 'android_find_text',
-    description: 'OCR the CURRENT screen of a connected Android device or emulator with the plugin-compiled '
-      + 'Vision helper (accurate recognition, zh-Hans + en-US, compiled with swiftc on first use into '
-      + '~/Library/Caches/dsh-android/bin/ocr; the device side is plain screencap, but recognition needs a '
-      + 'macOS host). Use this when android_ui_tree returns no labels — Jetpack Compose without semantics, '
+    description: 'OCR the CURRENT screen of a connected Android device or emulator using the configured '
+      + 'backend: Vision on macOS or an optional installed Tesseract executable with language data. '
+      + 'The device side is plain screencap. Use this when android_ui_tree returns no labels — Jetpack Compose without semantics, '
       + 'Flutter, a WebView, a game or video surface all dump as one unlabeled node — for text rendered as '
       + 'graphics (badge counts, prices baked into images), or to independently verify what is on screen. '
       + 'Captures a fresh screenshot, then returns {device, screen size in PIXELS, items:[{text, confidence, '
@@ -517,12 +516,13 @@ export function createAndroidOcrTools(host: AndroidToolHost, options: AndroidUiT
       const items = await runOcr('android_tap_text', shot.path, device.serial, exec.signal)
       const { item } = resolveOcrTextTarget(filterOcrItems(items, query, minConfidence), query, items, minConfidence)
       const center = rectCenter(item.rect)
-      // Pixel center → normalized 0..1 through the screenshot's own size; the
-      // host multiplies by the live frame size, which is the same display.
+      // Preserve the recognition screenshot's input pixels. A stream can be
+      // absent or carry an older orientation, so a normalize/multiply round
+      // trip through its dimensions would move the target.
       const normalized = pixelRectToNormalizedCenter(item.rect, pixelSize)
       const tap = { x: round4(normalized.x), y: round4(normalized.y) }
       try {
-        await host.tap(device.serial, tap.x, tap.y)
+        await host.tapPixels(device.serial, center.x, center.y)
       } catch (error) {
         throw new Error(`android_tap_text: the tap at (${round2(center.x)}, ${round2(center.y)}) px failed: ${errorMessage(error)}`)
       }

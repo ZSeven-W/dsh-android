@@ -73,9 +73,9 @@ Koordinat selalu **ternormalisasi 0..1 terhadap bingkai yang dialirkan**. Bingka
 
 | Alat | Fungsinya | Parameter utama |
 | --- | --- | --- |
-| `android_find_text` | Meng-OCR layar SAAT INI dengan helper Vision yang dikompilasi plugin (pengenalan akurat, zh-Hans + en-US). Gunakan saat pohon UI kosong atau menurun, untuk teks yang dirender sebagai grafis (angka badge, harga yang tercetak dalam gambar), atau untuk memverifikasi secara independen apa yang ada di layar. Mengembalikan `{device, size, items:[{text, confidence, rect}]}` dengan rect berupa kotak **piksel** berasal kiri-atas, terurut berdasarkan keyakinan dan dibatasi ~40 KB. Khusus host macOS. | `device`, `query` (substring tanpa membedakan huruf besar/kecil), `min_confidence` (default 0.3) |
-| `android_tap_text` | Meng-OCR layar SAAT INI dan mengetuk pusat kecocokan teks terbaik — aturan persis → mengandung → daftar kandidat yang sama seperti `android_tap_element`, untuk teks yang tidak terlihat pohon UI. Pusat piksel yang cocok dinormalisasi terhadap ukuran bingkai lalu dikirim sebagai ketukan; setelah ~300 ms tangkapan layar baru memperlihatkan efeknya. Khusus host macOS. | `device`, `query` (wajib), `min_confidence`, `expect_text`, `expect_gone` |
-| `android_wait_for` | Menunggu sampai sebuah teks muncul atau hilang, mem-polling pipeline tangkap + OCR yang sama setiap 600 ms hingga kondisinya terpenuhi atau waktu habis (bawaan 8 dtk, maks. 60 dtk). Timeout adalah jawaban normal `matched:false`, tidak pernah error. Khusus host macOS. | `device`, `text` (wajib), `mode` (`appear`/`disappear`), `timeout_ms`, `min_confidence` |
+| `android_find_text` | Mengenali layar saat ini dengan backend OCR terpilih. Mengembalikan kotak piksel dari kiri atas, menurut keyakinan, hingga 40 KB. | `serial`, `query` (substring tanpa membedakan huruf besar/kecil), `min_confidence` (default 0.3) |
+| `android_tap_text` | Mencari kecocokan persis lalu substring; mengembalikan kandidat bila ambigu. Mengetuk langsung pusat piksel yang dikenali lalu menangkap hasilnya. | `serial`, `query` (wajib), `min_confidence`, `expect_text`, `expect_gone` |
+| `android_wait_for` | Menunggu teks muncul atau hilang: default 8 dtk, maksimum 60 dtk. Timeout mengembalikan `matched:false`. | `serial`, `text` (wajib), `mode` (`appear`/`disappear`), `timeout_ms`, `min_confidence` |
 | `android_logs` | Membaca apa yang dicatat perangkat: `snapshot` (`logcat -d -v time` pada jendela waktu terakhir, default 2m) atau `follow` (tangkapan langsung terbatas selama `duration_seconds`, default 10, maksimal 60 — tidak pernah aliran yang menggantung). Saring ke satu aplikasi dengan `bundle_id` (nama paket Android, diselesaikan menjadi pid-nya). Output dibatasi ~300 baris / 30 KB dengan petunjuk penyempitan. | `device`, `mode` (`snapshot`/`follow`), `duration`, `duration_seconds`, `bundle_id`, `grep` |
 | `android_processes` | Mencantumkan proses yang berjalan pada perangkat (`ps -A`) sebagai `{pid, name}` — sumber pid untuk `android_backtrace`. | `device`, `filter` (substring tanpa membedakan huruf besar/kecil pada nama proses) |
 | `android_backtrace` | Meminta proses membuang tumpukannya (`kill -3`) dan membaca jejak ANR hasilnya dari `/data/anr/`. Sebagian besar perangkat non-root menolak direktori itu, sehingga alat menurun ke buffer crash (`logcat -b crash -d`) dan melaporkan secara jujur mesin mana yang menjawab serta apa yang tidak dapat dilihatnya. | `device`, `pid` atau `bundle_id` |
@@ -218,3 +218,14 @@ fisik tidak pernah terpengaruh.
 - Lihat [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) untuk pemberitahuan lengkap.
 
 **Lisensi**: MIT
+
+### OCR: Vision / Tesseract
+
+Default `auto` memakai Vision di macOS dan Tesseract opsional di Windows/Linux. Pengguna memasang program dan data bahasa. Karakter Mandarin digabung menurut baris TSV; spasi antarkata Latin dipertahankan.
+
+- `DSHPLUGIN_ANDROID_OCR_BACKEND`: `auto`, `vision`, `tesseract`.
+- `DSHPLUGIN_ANDROID_TESSERACT_BINARY`: Tesseract executable path.
+- `DSHPLUGIN_ANDROID_TESSERACT_LANGUAGES`: `eng+chi_sim`.
+- `DSHPLUGIN_ANDROID_TESSERACT_DATA_DIR`: Optional language-model directory.
+
+[Tesseract CLI](https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html)

@@ -24,6 +24,8 @@ const DEFAULT_RESTART_DELAY_MS = 5_000
 const KEEP_ALIVE_TICK_MS = 1_000
 const FIRST_FRAME_TIMEOUT_MS = 15_000
 const CONTROL_TIMEOUT_MS = 30_000
+/** A live child alone can hang; only recent decoded frames prove liveness. */
+const STREAM_DEVICE_PROOF_MAX_AGE_MS = 2_000
 /** Longest `input swipe` duration accepted (ms). */
 const MAX_SWIPE_MS = 5_000
 
@@ -140,6 +142,7 @@ export class AndroidHostController {
   readonly toolchain: AdbToolchain
   readonly #options: Required<AndroidHostOptions>
   #loop: AdbFrameLoop | undefined
+  #streamDevice: { loop: AdbFrameLoop; device: AndroidDevice } | undefined
   #starting: Promise<AndroidStreamInfo> | undefined
   #launchQueue: Promise<void> = Promise.resolve()
   #consumers = 0
@@ -204,6 +207,7 @@ export class AndroidHostController {
       if (current !== undefined && current.serial !== serial) {
         current.stop()
         this.#loop = undefined
+        this.#streamDevice = undefined
       }
       return this.#startFor(serial)
     }
@@ -256,6 +260,7 @@ export class AndroidHostController {
     this.#exitAt = undefined
     const loop = this.#loop
     this.#loop = undefined
+    this.#streamDevice = undefined
     this.#startedAt = undefined
     loop?.stop()
     await this.#starting?.catch(() => {})
@@ -448,6 +453,19 @@ export class AndroidHostController {
 
   /** Resolve one online device: explicit serial, streamed, or the only one. */
   async resolveTarget(serial?: string): Promise<AndroidDevice> {
+    const loop = this.#loop
+    const proof = this.#streamDevice
+    const frame = loop?.latestFrame
+    const age = frame === undefined ? Infinity : Date.now() - frame.at
+    if (!this.#disposed && serial !== undefined && serial !== ''
+      && loop?.running === true && loop.serial === serial
+      && proof?.loop === loop && age >= 0 && age <= STREAM_DEVICE_PROOF_MAX_AGE_MS) {
+      // This exact stream was started after a real online-device query and
+      // is still receiving frames. Return a copy so callers cannot mutate
+      // the retained descriptor. Unnamed, different, stale or dead streams
+      // continue through the real adb query below.
+      return { ...proof.device }
+    }
     const online = await this.toolchain.onlineDevices()
     if (serial !== undefined && serial !== '') {
       const match = online.find(device => device.serial === serial)
@@ -499,7 +517,8 @@ export class AndroidHostController {
   async #startFor(serial: string): Promise<AndroidStreamInfo> {
     if (this.#disposed) throw new Error('dsh-android: the host is disposed')
     const online = await this.toolchain.onlineDevices()
-    if (!online.some(device => device.serial === serial)) {
+    const device = online.find(device => device.serial === serial)
+    if (device === undefined) {
       const all = await this.toolchain.listDevices().catch(() => [] as AndroidDevice[])
       const known = all.find(device => device.serial === serial)
       throw new AdbError(
@@ -522,6 +541,7 @@ export class AndroidHostController {
       onExit: detail => {
         if (this.#loop !== loop) return
         this.#loop = undefined
+        this.#streamDevice = undefined
         this.#startedAt = undefined
         this.#lastError = `the screencap loop for ${serial} died (${detail})`
         this.#exitAt = Date.now()
@@ -544,6 +564,7 @@ export class AndroidHostController {
     }
     this.#startedAt = Date.now()
     this.#exitAt = undefined
+    if (this.#loop === loop && loop.running) this.#streamDevice = { loop, device: { ...device } }
     return this.#infoOf(loop)
   }
 

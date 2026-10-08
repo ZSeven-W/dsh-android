@@ -73,9 +73,9 @@ Las coordenadas están siempre **normalizadas 0..1 respecto al fotograma transmi
 
 | Herramienta | Qué hace | Parámetros clave |
 | --- | --- | --- |
-| `android_find_text` | Aplica OCR a la pantalla ACTUAL con el ayudante de Vision compilado por el plugin (reconocimiento accurate, zh-Hans + en-US). Úsala cuando el árbol de UI esté vacío o degenerado, para texto renderizado como gráfico (contadores de insignias, precios incrustados en imágenes) o para verificar de forma independiente qué hay en pantalla. Devuelve `{device, size, items:[{text, confidence, rect}]}`, donde los rects son cajas en **píxeles** con origen arriba a la izquierda, ordenadas por confianza y con tope de ~40 KB. Solo en host macOS. | `device`, `query` (subcadena sin distinguir mayúsculas), `min_confidence` (0.3 por defecto) |
-| `android_tap_text` | Aplica OCR a la pantalla ACTUAL y toca el centro de la mejor coincidencia de texto: las mismas reglas exactas que `android_tap_element` (exacto → contiene → lista de candidatos), para texto que el árbol de UI no ve. El centro en píxeles de la coincidencia se normaliza respecto al tamaño del fotograma y se envía como toque; tras ~300 ms una captura nueva muestra el efecto. Solo en host macOS. | `device`, `query` (obligatorio), `min_confidence`, `expect_text`, `expect_gone` |
-| `android_wait_for` | Espera hasta que un texto aparezca o desaparezca, sondeando el mismo canal de captura + OCR cada 600 ms hasta que la condición se cumpla o venza el tiempo (8 s por defecto, 60 s máximo). Un vencimiento es una respuesta `matched:false` normal, nunca un error. Solo en host macOS. | `device`, `text` (obligatorio), `mode` (`appear`/`disappear`), `timeout_ms`, `min_confidence` |
+| `android_find_text` | Reconoce la pantalla actual con el motor OCR seleccionado. Devuelve cajas en píxeles desde la esquina superior izquierda, por confianza, hasta 40 KB. | `serial`, `query` (subcadena sin distinguir mayúsculas), `min_confidence` (0.3 por defecto) |
+| `android_tap_text` | Busca coincidencia exacta y luego parcial, o devuelve candidatos ambiguos. Toca directamente el centro en píxeles y captura el resultado. | `serial`, `query` (obligatorio), `min_confidence`, `expect_text`, `expect_gone` |
+| `android_wait_for` | Espera a que aparezca o desaparezca el texto: 8 s por defecto, máximo 60 s. El tiempo agotado devuelve `matched:false`. | `serial`, `text` (obligatorio), `mode` (`appear`/`disappear`), `timeout_ms`, `min_confidence` |
 | `android_logs` | Lee lo que registra el dispositivo: `snapshot` (`logcat -d -v time` sobre una ventana reciente, 2m por defecto) o `follow` (una captura en vivo acotada por `duration_seconds`, 10 por defecto, 60 máximo; nunca una transmisión colgada). Filtra a una sola app con `bundle_id` (el nombre de paquete Android, resuelto a su pid). La salida se limita a ~300 líneas / 30 KB con una pista para acotar. | `device`, `mode` (`snapshot`/`follow`), `duration`, `duration_seconds`, `bundle_id`, `grep` |
 | `android_processes` | Lista los procesos en ejecución del dispositivo (`ps -A`) como `{pid, name}`: la fuente de pid para `android_backtrace`. | `device`, `filter` (subcadena sin distinguir mayúsculas sobre el nombre del proceso) |
 | `android_backtrace` | Pide al proceso que vuelque sus pilas (`kill -3`) y lee la traza de ANR resultante en `/data/anr/`. La mayoría de dispositivos sin root deniegan ese directorio, así que la herramienta degrada al búfer de fallos (`logcat -b crash -d`) e informa con honestidad de qué motor respondió y de qué no puede ver. | `device`, `pid` o `bundle_id` |
@@ -219,3 +219,14 @@ dispositivos físicos nunca se ven afectados.
 - Consulta [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) para los avisos completos.
 
 **Licencia**: MIT
+
+### OCR: Vision / Tesseract
+
+Por defecto, `auto` usa Vision en macOS y Tesseract opcional en Windows/Linux. El usuario instala el ejecutable y los datos de idioma. Los caracteres chinos se agrupan por línea TSV y se conservan los espacios entre palabras latinas.
+
+- `DSHPLUGIN_ANDROID_OCR_BACKEND`: `auto`, `vision`, `tesseract`.
+- `DSHPLUGIN_ANDROID_TESSERACT_BINARY`: Tesseract executable path.
+- `DSHPLUGIN_ANDROID_TESSERACT_LANGUAGES`: `eng+chi_sim`.
+- `DSHPLUGIN_ANDROID_TESSERACT_DATA_DIR`: Optional language-model directory.
+
+[Tesseract CLI](https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html)
