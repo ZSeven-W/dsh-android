@@ -301,6 +301,43 @@ step(
   )
 }
 {
+  const detachAuth = routes.attachRequestAuthentication(req => req.headers['x-test-dsh-auth'] === 'ok')
+  try {
+    const body = '{}'
+    const unauth = await request(route('status'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-length': String(body.length) },
+      body,
+    })
+    const authed = await request(route('status'), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'content-length': String(body.length),
+        'x-test-dsh-auth': 'ok',
+      },
+      body,
+    })
+    const crossSiteAuthed = await request(route('status'), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'content-length': String(body.length),
+        'x-test-dsh-auth': 'ok',
+        'sec-fetch-site': 'cross-site',
+      },
+      body,
+    })
+    step(
+      'authenticated Desktop proxy requests without Origin are accepted while unauthenticated or cross-site requests stay 403',
+      unauth.status === 403 && authed.status === 200 && crossSiteAuthed.status === 403,
+      `unauth=${unauth.status} authed=${authed.status} crossSite=${crossSiteAuthed.status}`,
+    )
+  } finally {
+    detachAuth()
+  }
+}
+{
   const res = await postJson(route('status'), {}, { origin: 'http://evil.example' })
   step(
     'a cross-origin POST is refused (403)',

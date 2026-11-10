@@ -70,6 +70,7 @@
       "optionalServices": [
         "skills",
         "webServer",
+        "connection",
         "attachments",
         "llm"
       ],

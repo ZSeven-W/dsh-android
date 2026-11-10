@@ -58,6 +58,7 @@ import {
   isTrustedRequest,
   openVerifiedScreenshot,
   screenshotDir,
+  type AndroidRequestAuthentication,
   type AndroidTrustConfig,
 } from './stream-access.js'
 
@@ -222,6 +223,7 @@ export interface StreamRouteMount {
  */
 export class StreamRoutes {
   #disposed = false
+  #requestAuthentication: AndroidRequestAuthentication | undefined
   readonly #streamTeardowns = new Set<() => void>()
 
   constructor(
@@ -231,6 +233,14 @@ export class StreamRoutes {
 
   get routeAvailable(): boolean {
     return this.access.routeAvailable
+  }
+
+  /** Attach Host-owned authentication for Desktop requests whose proxy omits Origin. */
+  attachRequestAuthentication(authenticate: AndroidRequestAuthentication): () => void {
+    this.#requestAuthentication = authenticate
+    return () => {
+      if (this.#requestAuthentication === authenticate) this.#requestAuthentication = undefined
+    }
   }
 
   /** `GET /_dsh/dsh-android/stream/<token>` — live multipart PNG stream. */
@@ -733,7 +743,7 @@ export class StreamRoutes {
   }
 
   #requireTrusted(req: IncomingMessage, requireOrigin = false): void {
-    if (!isTrustedRequest(req, requireOrigin)) {
+    if (!isTrustedRequest(req, requireOrigin, this.#requestAuthentication)) {
       throw new RouteError(403, 'the dsh-android route requires a loopback trusted browser request', 'forbidden')
     }
   }
@@ -773,6 +783,11 @@ export function mountStreamRoutes(webServer: StreamRouteMount, routes: StreamRou
   }
 }
 
+/** Public Host authentication subset; optional on older or headless profiles. */
+type ConnectionContext = Context & {
+  connection: { requestRejection(req: IncomingMessage): number | undefined }
+}
+
 /**
  * Mount the stream routes on the optional `webServer` service. Uses
  * `ctx.inject` + `ctx.effect` so headless profiles (no webServer) still
@@ -794,6 +809,10 @@ export function installStreamRoutes(
     const routes = new StreamRoutes(host, access)
     const detach = access.attachRoute()
     const dispose = mountStreamRoutes(webServer, routes)
+    webCtx.inject(['connection'], connectionCtx => connectionCtx.effect(() => {
+      const connection = (connectionCtx as ConnectionContext).connection
+      return routes.attachRequestAuthentication(req => connection.requestRejection(req) === undefined)
+    }, 'dsh-android: authenticated Desktop stream requests'))
     return () => {
       dispose()
       detach()

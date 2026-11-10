@@ -87,6 +87,7 @@ export {
   type ScreenshotTokenPayload,
   type ScreenshotVerdict,
   type StreamTokenPayload,
+  type AndroidRequestAuthentication,
   type AndroidTrustConfig,
   configureTrustedAuthorities,
   mintTrustedAuthorities,

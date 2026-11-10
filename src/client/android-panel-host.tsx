@@ -369,7 +369,7 @@ export function androidPanelEffectiveWidth(
 const surfaceStyles: Record<string, CSSProperties> = {
   surface: {
     position: 'fixed',
-    top: 0,
+    top: 'var(--dsh-windows-titlebar-height, 0px)',
     right: 0,
     bottom: 0,
     zIndex: 1200,

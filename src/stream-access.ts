@@ -381,10 +381,30 @@ function isTrustedTransportRequest(req: IncomingMessage): boolean {
   return isLoopbackHostname(authority.hostname) || trustedEntriesForHost(authority, req.headers.host as string).length > 0
 }
 
-function isTrustedBrowserRequest(req: IncomingMessage, requireOrigin: boolean, entries: readonly MintedAuthority[] | undefined): boolean {
+/** Host-owned authentication for Desktop requests whose proxy omits Origin. */
+export type AndroidRequestAuthentication = (req: IncomingMessage) => boolean
+
+function isTrustedBrowserRequest(
+  req: IncomingMessage,
+  requireOrigin: boolean,
+  entries: readonly MintedAuthority[] | undefined,
+  authenticate?: AndroidRequestAuthentication,
+): boolean {
   if (req.headers['sec-fetch-site'] === 'cross-site') return false
   const origin = req.headers.origin
-  if (origin === undefined) return !requireOrigin
+  if (origin === undefined) {
+    if (!requireOrigin) return true
+    const site = req.headers['sec-fetch-site']
+    if (site !== undefined && site !== 'same-origin' && site !== 'none') return false
+    const authority = requestAuthority(req)
+    if (authority === undefined || !isLoopbackHostname(authority.hostname)) return false
+    if (req.socket?.localPort !== undefined && Number(authority.port || 80) !== req.socket.localPort) return false
+    try {
+      return authenticate !== undefined && authenticate(req) === true
+    } catch {
+      return false
+    }
+  }
   if (typeof origin !== 'string') return false
   const authority = requestAuthority(req)
   if (authority === undefined) return false
@@ -410,7 +430,11 @@ function isTrustedBrowserRequest(req: IncomingMessage, requireOrigin: boolean, e
 }
 
 /** The transport fence applied to every dsh-android route. */
-export function isTrustedRequest(req: IncomingMessage, requireOrigin: boolean): boolean {
+export function isTrustedRequest(
+  req: IncomingMessage,
+  requireOrigin: boolean,
+  authenticate?: AndroidRequestAuthentication,
+): boolean {
   // The transport decides first, and it is the half that actually refuses a
   // remote caller; the header checks are only meaningful after it passes.
   if (!isTrustedTransportRequest(req)) return false
@@ -422,7 +446,7 @@ export function isTrustedRequest(req: IncomingMessage, requireOrigin: boolean): 
   const entries = authority === undefined || isLoopbackHostname(authority.hostname)
     ? undefined
     : trustedEntriesForHost(authority, req.headers.host as string)
-  return isTrustedBrowserRequest(req, requireOrigin, entries)
+  return isTrustedBrowserRequest(req, requireOrigin, entries, authenticate)
 }
 
 // ── screenshot path containment ──────────────────────────────────────────────
